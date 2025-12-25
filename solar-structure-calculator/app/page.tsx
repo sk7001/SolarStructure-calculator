@@ -242,7 +242,7 @@ const RodCuttingSuggestions = ({ results }) => {
   );
 };
 
-/** ===== NEW: Hardware totals ===== */
+/** ===== Hardware totals ===== */
 
 const HardwareTotals = ({ results }) => {
   const totalStructures = useMemo(() => {
@@ -478,7 +478,18 @@ const InputForm = ({ panelModels, onCalculate }) => {
     }
 
     const selectedModel = panelModels.find((m) => m.name === selectedPanelModel);
-    const panelLen = isVertical ? selectedModel.height : selectedModel.width;
+    if (!selectedModel) {
+      alert("Selected panel model not found.");
+      return;
+    }
+
+    // FIX: Always compute long side / short side first
+    const longSide = Math.max(Number(selectedModel.width), Number(selectedModel.height));
+    const shortSide = Math.min(Number(selectedModel.width), Number(selectedModel.height));
+
+    // Horizontal (landscape) => long side along rod
+    // Vertical (portrait) => short side along rod
+    const panelLen = isVertical ? longSide : shortSide;
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
     if (maxPanelsPerRod <= 0) {
@@ -501,22 +512,37 @@ const InputForm = ({ panelModels, onCalculate }) => {
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Front Leg Height (in inches)</label>
-        <input type="number" value={frontLegHeight} onChange={(e) => setFrontLegHeight(e.target.value)} className={fieldClass} />
+        <input
+          type="number"
+          value={frontLegHeight}
+          onChange={(e) => setFrontLegHeight(e.target.value)}
+          className={fieldClass}
+        />
       </div>
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Number of Panels</label>
-        <input type="number" value={numberOfPanels} onChange={(e) => setNumberOfPanels(e.target.value)} className={fieldClass} />
+        <input
+          type="number"
+          value={numberOfPanels}
+          onChange={(e) => setNumberOfPanels(e.target.value)}
+          className={fieldClass}
+        />
       </div>
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Panel Model</label>
         <select value={selectedPanelModel} onChange={(e) => setSelectedPanelModel(e.target.value)} className={fieldClass}>
-          {panelModels.map((m, idx) => (
-            <option key={`${m.name}-${idx}`} value={m.name}>
-              {m.name} - {m.width}x{m.height} - {m.description}
-            </option>
-          ))}
+          {panelModels.map((m, idx) => {
+            const longSide = Math.max(Number(m.width), Number(m.height));
+            const shortSide = Math.min(Number(m.width), Number(m.height));
+
+            return (
+              <option key={`${m.name}-${idx}`} value={m.name}>
+                {m.name} - {longSide}x{shortSide} - {m.description}
+              </option>
+            );
+          })}
         </select>
       </div>
 
