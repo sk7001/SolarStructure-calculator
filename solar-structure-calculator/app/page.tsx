@@ -14,15 +14,14 @@ const calculateStructures = (totalPanels, maxPanelsPerRod) => {
   return Math.ceil(totalPanels / maxPanelsPerRod);
 };
 
-const calculateLegs = (totalStructures, frontLegHeight, panelHeight, tiltAngle = 19, gap = 5) => {
-  const totalFrontLegs = totalStructures * 2; // Each structure has 2 front legs
-  const totalRearLegs = totalStructures * 2; // Each structure has 2 rear legs
+const calculateLegs = (totalPanels, frontLegHeight, panelHeight, tiltAngle = 19, gap = 5) => {
+  const totalFrontLegs = totalPanels * 2; // Each panel has 2 front legs
+  const totalRearLegs = totalPanels * 2; // Each panel has 2 rear legs
 
-  // Calculate triangle height for a single panel
-  const singlePanelHeight = (panelHeight + gap) * Math.sin((tiltAngle * Math.PI) / 180);
+  // Total triangle height for all panels
+  const totalHypotenuse = (panelHeight + gap) * totalPanels;
 
-  // Total triangle height for all panels in a structure
-  const triangleHeight = singlePanelHeight * calculatePanelsPerRod(panelHeight, undefined, gap); // Assuming one structure for simplicity, revisit if multiple panels per structure are distinct from maxPanelsPerRod
+  const triangleHeight = totalHypotenuse * Math.sin((tiltAngle * Math.PI) / 180);
 
   // Rear leg height is the front leg height plus the total triangle height
   const rearLegHeight = frontLegHeight + triangleHeight;
@@ -128,7 +127,7 @@ const PanelModelManager = ({ panelModels, setPanelModels, isDrawerOpen, setIsDra
     if (!newModelName || !newModelWidth || !newModelHeight || !newModelDescription) {
       alert("Please fill in all fields.");
       return;
-    }``
+    }
 
     const newModel = {
       name: newModelName,
@@ -216,7 +215,7 @@ const InputForm = ({ panelModels, onCalculate }) => {
 
     // Pass the correct totalPanels value to calculateLegs
     const legs = calculateLegs(
-      totalStructures, // Pass totalStructures instead of numberOfPanels
+      parseInt(numberOfPanels, 10), // Use the total number of panels directly
       parseFloat(frontLegHeight),
       panelHeight
     );
