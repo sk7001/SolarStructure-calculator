@@ -1,12 +1,20 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { loadPanels } from "./lib/panelsStorage";
 
 const ROD_LENGTH = 164;
 const GAP = 5;
 const TILT_ANGLE = 19;
+
+// Hardware per structure (as you requested)
+const HARDWARE_PER_STRUCTURE = {
+  basePlates: 4,
+  anchorBolts: 16,
+  angleAttachers: 4,
+  nuts: 24,
+};
 
 /** ===== Calculations (UNCHANGED) ===== */
 
@@ -111,6 +119,188 @@ const fieldClass =
 
 const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
 
+/** ===== Cutting plan (compact UI) ===== */
+
+const buildCutPlanFFD = (pieces, rodLen, kerf) => {
+  const sorted = [...pieces].sort((a, b) => b.len - a.len);
+  const rods = [];
+
+  for (const piece of sorted) {
+    let placed = false;
+
+    for (const rod of rods) {
+      const extraKerf = rod.cuts.length > 0 ? kerf : 0;
+      const needed = piece.len + extraKerf;
+
+      if (rod.used + needed <= rodLen + 1e-9) {
+        rod.cuts.push(piece);
+        rod.used += needed;
+        placed = true;
+        break;
+      }
+    }
+
+    if (!placed) {
+      rods.push({ cuts: [piece], used: piece.len });
+    }
+  }
+
+  return rods.map((r) => ({
+    ...r,
+    waste: Number((rodLen - r.used).toFixed(2)),
+  }));
+};
+
+const summarizePatterns = (rods) => {
+  const map = new Map();
+
+  for (const rod of rods) {
+    const sig = rod.cuts
+      .slice()
+      .sort((a, b) => b.len - a.len)
+      .map((c) => `${c.type}:${c.len.toFixed(2)}`)
+      .join(" | ");
+
+    const prev = map.get(sig);
+    if (!prev) map.set(sig, { count: 1, exampleWaste: rod.waste });
+    else map.set(sig, { count: prev.count + 1, exampleWaste: prev.exampleWaste });
+  }
+
+  return [...map.entries()]
+    .map(([pattern, meta]) => ({ pattern, ...meta }))
+    .sort((a, b) => b.count - a.count);
+};
+
+const RodCuttingSuggestions = ({ results }) => {
+  const kerfNum = 0.125;
+
+  const cutData = useMemo(() => {
+    if (!results?.rods?.breakdown?.length) return null;
+
+    const pieces = [];
+    for (const b of results.rods.breakdown) {
+      const frontLen = Number(b.legs.frontLegHeight);
+      const rearLen = Number(b.legs.rearLegHeight);
+      const hypoLen = Number(b.legs.hypotenuseRodLength);
+
+      for (let i = 0; i < b.frontLegsCount; i++) pieces.push({ type: "Front", len: frontLen });
+      for (let i = 0; i < b.rearLegsCount; i++) pieces.push({ type: "Rear", len: rearLen });
+      for (let i = 0; i < b.hypoRodsCount; i++) pieces.push({ type: "Hypo", len: hypoLen });
+    }
+
+    const rodsPlan = buildCutPlanFFD(pieces, ROD_LENGTH, kerfNum);
+    const totalWaste = rodsPlan.reduce((s, r) => s + r.waste, 0);
+    const patterns = summarizePatterns(rodsPlan);
+
+    return {
+      piecesCount: pieces.length,
+      rodsCount: rodsPlan.length,
+      totalWaste: Number(totalWaste.toFixed(2)),
+      patterns,
+    };
+  }, [results]);
+
+  return (
+    <div className={`${cardClass} p-6 mt-6`}>
+      <h2 className="text-xl font-semibold mb-4 text-gray-100">Rod cutting plan</h2>
+
+      {!cutData ? (
+        <div className="text-gray-400 text-sm">Calculate first to see suggestions.</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Pieces</div>
+              <div className="text-gray-100 font-semibold text-2xl">{cutData.piecesCount}</div>
+            </div>
+
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Rods (plan)</div>
+              <div className="text-gray-100 font-semibold text-2xl">{cutData.rodsCount}</div>
+            </div>
+
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Estimated waste</div>
+              <div className="text-gray-100 font-semibold text-2xl">{cutData.totalWaste}"</div>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {cutData.patterns.slice(0, 6).map((p, idx) => (
+              <div key={idx} className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-gray-100 font-semibold">× {p.count}</div>
+                  <div className="text-gray-300 text-sm">Waste: {p.exampleWaste}"</div>
+                </div>
+                <div className="text-gray-300 text-sm mt-2 break-words">{p.pattern}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+/** ===== NEW: Hardware totals ===== */
+
+const HardwareTotals = ({ results }) => {
+  const totalStructures = useMemo(() => {
+    if (!results?.structures?.length) return 0;
+    return results.structures.reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+  }, [results]);
+
+  const totals = useMemo(() => {
+    return {
+      structures: totalStructures,
+      basePlates: totalStructures * HARDWARE_PER_STRUCTURE.basePlates,
+      anchorBolts: totalStructures * HARDWARE_PER_STRUCTURE.anchorBolts,
+      angleAttachers: totalStructures * HARDWARE_PER_STRUCTURE.angleAttachers,
+      nuts: totalStructures * HARDWARE_PER_STRUCTURE.nuts,
+    };
+  }, [totalStructures]);
+
+  return (
+    <div className={`${cardClass} p-6 mt-6`}>
+      <h2 className="text-xl font-semibold mb-4 text-gray-100">Hardware totals</h2>
+
+      {totalStructures === 0 ? (
+        <div className="text-gray-400 text-sm">Calculate first to see hardware totals.</div>
+      ) : (
+        <>
+          <div className="text-gray-300 text-sm mb-4">
+            Total structures: <span className="text-gray-100 font-semibold">{totals.structures}</span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Base plates</div>
+              <div className="text-gray-100 font-semibold text-2xl">{totals.basePlates}</div>
+            </div>
+
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Anchor bolts</div>
+              <div className="text-gray-100 font-semibold text-2xl">{totals.anchorBolts}</div>
+            </div>
+
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Angle attachers</div>
+              <div className="text-gray-100 font-semibold text-2xl">{totals.angleAttachers}</div>
+            </div>
+
+            <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+              <div className="text-gray-400 text-xs">Nuts</div>
+              <div className="text-gray-100 font-semibold text-2xl">{totals.nuts}</div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+/** ===== Drawer + Navbar ===== */
+
 const DrawerMenu = ({ onClose }) => {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -126,12 +316,9 @@ const DrawerMenu = ({ onClose }) => {
   }, [onClose]);
 
   return (
-    // Solid full-screen layer (prevents any “transparent feel”)
     <div className="fixed inset-0 z-50 bg-gray-950">
-      {/* Solid overlay (still clickable to close) */}
       <div onClick={onClose} className="fixed inset-0 z-40 bg-gray-950" />
 
-      {/* Solid drawer */}
       <aside className="fixed left-0 top-0 z-50 h-full w-80 bg-gray-950 border-r border-gray-800 shadow-2xl">
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <div>
@@ -258,7 +445,9 @@ const ResultsTable = ({ results }) => {
 
           <tr className="bg-green-900/30">
             <td className="border-b border-gray-800 p-2 font-bold text-lg">TOTAL GI Rods (164")</td>
-            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">{rods.totals.totalRodsNeeded}</td>
+            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">
+              {rods.totals.totalRodsNeeded}
+            </td>
           </tr>
           <tr>
             <td className="border-b border-gray-800 p-2">Total Material Length</td>
@@ -371,6 +560,8 @@ export default function Home() {
       <div className="p-6 max-w-3xl mx-auto">
         <InputForm panelModels={models} onCalculate={setResults} />
         <ResultsTable results={results} />
+        <RodCuttingSuggestions results={results} />
+        <HardwareTotals results={results} />
       </div>
     </div>
   );
