@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { loadPanels } from "./lib/panelsStorage";
+import { addProject, popActiveProjectId, getProjectById } from "./lib/projectsStorage";
 
 const ROD_LENGTH = 164;
 const GAP = 5;
@@ -337,12 +338,30 @@ const DrawerMenu = ({ onClose }) => {
 
         <div className="p-4 space-y-3">
           <Link
+            href="/projects"
+            onClick={onClose}
+            className="block rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-colors p-4"
+          >
+            <div className="text-gray-100 font-semibold">Projects</div>
+            <div className="text-gray-400 text-sm mt-1">Save individual projects with a name</div>
+          </Link>
+
+          <Link
             href="/panels"
             onClick={onClose}
             className="block rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-colors p-4"
           >
             <div className="text-gray-100 font-semibold">List of Panels</div>
             <div className="text-gray-400 text-sm mt-1">View / add / manage panel models</div>
+          </Link>
+
+          <Link
+            href="/pieces"
+            onClick={onClose}
+            className="block rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-colors p-4"
+          >
+            <div className="text-gray-100 font-semibold">Old Inventory (Usable Pieces)</div>
+            <div className="text-gray-400 text-sm mt-1">Save and view leftover usable pieces</div>
           </Link>
         </div>
       </aside>
@@ -459,17 +478,23 @@ const ResultsTable = ({ results }) => {
   );
 };
 
-const InputForm = ({ panelModels, onCalculate }) => {
-  const [frontLegHeight, setFrontLegHeight] = useState("");
-  const [numberOfPanels, setNumberOfPanels] = useState("");
-  const [selectedPanelModel, setSelectedPanelModel] = useState(panelModels[0]?.name || "");
-  const [isVertical, setIsVertical] = useState(false);
-
+const InputForm = ({
+  panelModels,
+  onCalculate,
+  frontLegHeight,
+  setFrontLegHeight,
+  numberOfPanels,
+  setNumberOfPanels,
+  selectedPanelModel,
+  setSelectedPanelModel,
+  isVertical,
+  setIsVertical,
+}) => {
   useEffect(() => {
     if (panelModels.length && !panelModels.find((p) => p.name === selectedPanelModel)) {
       setSelectedPanelModel(panelModels[0].name);
     }
-  }, [panelModels, selectedPanelModel]);
+  }, [panelModels, selectedPanelModel, setSelectedPanelModel]);
 
   const handleCalculate = () => {
     if (!frontLegHeight || !numberOfPanels || !selectedPanelModel) {
@@ -483,12 +508,10 @@ const InputForm = ({ panelModels, onCalculate }) => {
       return;
     }
 
-    // FIX: Always compute long side / short side first
     const longSide = Math.max(Number(selectedModel.width), Number(selectedModel.height));
     const shortSide = Math.min(Number(selectedModel.width), Number(selectedModel.height));
 
-    // Horizontal (landscape) => long side along rod
-    // Vertical (portrait) => short side along rod
+    // Your requirement: Vertical => longSide, Horizontal => shortSide
     const panelLen = isVertical ? longSide : shortSide;
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
@@ -568,8 +591,38 @@ export default function Home() {
   const [panelModels, setPanelModels] = useState([]);
   const [results, setResults] = useState(null);
 
+  // Inputs lifted here so we can save them
+  const [frontLegHeight, setFrontLegHeight] = useState("");
+  const [numberOfPanels, setNumberOfPanels] = useState("");
+  const [selectedPanelModel, setSelectedPanelModel] = useState("");
+  const [isVertical, setIsVertical] = useState(false);
+
+  // Save-as-project
+  const [projectName, setProjectName] = useState("");
+
+  // Hydration fix: render the select ONLY after client loaded panels
+  const [isReady, setIsReady] = useState(false);
+
   useEffect(() => {
-    setPanelModels(loadPanels());
+    const models = loadPanels(); // client-only localStorage read happens here
+    setPanelModels(models);
+    setSelectedPanelModel((prev) => prev || models[0]?.name || "");
+    setIsReady(true);
+  }, []);
+
+  useEffect(() => {
+    const id = popActiveProjectId();
+    if (!id) return;
+
+    const p = getProjectById(id);
+    if (!p) return;
+
+    setProjectName(p.name || "");
+    setFrontLegHeight(p.inputs?.frontLegHeight || "");
+    setNumberOfPanels(p.inputs?.numberOfPanels || "");
+    setSelectedPanelModel(p.inputs?.selectedPanelModel || "");
+    setIsVertical(Boolean(p.inputs?.isVertical));
+    setResults(p.results || null);
   }, []);
 
   useEffect(() => {
@@ -578,16 +631,84 @@ export default function Home() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  const models = panelModels.length ? panelModels : loadPanels();
+  useEffect(() => {
+    if (panelModels.length && selectedPanelModel && !panelModels.find((p) => p.name === selectedPanelModel)) {
+      setSelectedPanelModel(panelModels[0]?.name || "");
+    }
+  }, [panelModels, selectedPanelModel]);
+
+  const onSaveProject = () => {
+    if (!projectName.trim()) {
+      alert("Enter project name.");
+      return;
+    }
+
+    try {
+      addProject({
+        name: projectName.trim(),
+        inputs: { frontLegHeight, numberOfPanels, selectedPanelModel, isVertical },
+        results,
+      });
+      alert("Project saved. Go to Projects to view/edit.");
+      setProjectName("");
+    } catch (e) {
+      alert(e?.message || "Failed to save project.");
+    }
+  };
 
   return (
     <div className="bg-gray-950 text-gray-100 min-h-screen antialiased">
       <Navbar />
+
       <div className="p-6 max-w-3xl mx-auto">
-        <InputForm panelModels={models} onCalculate={setResults} />
+        {!isReady ? (
+          <div className={`${cardClass} p-6`}>
+            <div className="text-gray-400">Loading panel models...</div>
+          </div>
+        ) : (
+          <InputForm
+            panelModels={panelModels}
+            onCalculate={setResults}
+            frontLegHeight={frontLegHeight}
+            setFrontLegHeight={setFrontLegHeight}
+            numberOfPanels={numberOfPanels}
+            setNumberOfPanels={setNumberOfPanels}
+            selectedPanelModel={selectedPanelModel}
+            setSelectedPanelModel={setSelectedPanelModel}
+            isVertical={isVertical}
+            setIsVertical={setIsVertical}
+          />
+        )}
+
         <ResultsTable results={results} />
         <RodCuttingSuggestions results={results} />
         <HardwareTotals results={results} />
+
+        {/* Save as Project (bottom) */}
+        <div className={`${cardClass} p-6 mt-6`}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold text-gray-100">Save as project</h2>
+            <Link
+              href="/projects"
+              className="rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors px-4 py-2 border border-gray-700"
+            >
+              Projects
+            </Link>
+          </div>
+
+          <div className="mt-4">
+            <label className="block text-gray-300 mb-2">Project name</label>
+            <input value={projectName} onChange={(e) => setProjectName(e.target.value)} className={fieldClass} />
+          </div>
+
+          <button
+            type="button"
+            onClick={onSaveProject}
+            className="mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition"
+          >
+            Save Project
+          </button>
+        </div>
       </div>
     </div>
   );
