@@ -2,10 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { listPanels, seedDefaultPanelsIfEmpty, type PanelRow } from "./lib/panelsDb";
-import { createProject, getProjectById } from "./lib/projectsDb";
+import { createProject, getProjectById, updateProject } from "./lib/projectsDb";
 
 import { computeCost, type CostData } from "./lib/costing";
 import EstimationPdfJsPdf from "./components/EstimationPdfJsPdf";
@@ -268,7 +268,12 @@ const suggestRoofFit = ({
   if (!structures?.length) return null;
 
   const rowAzimuthDeg = FIXED_ROW_AZIMUTH_DEG;
-  const { along: roofAlong, across: roofAcross } = projectedRoofSpans(roofLength, roofWidth, roofLenAzimuthDeg, rowAzimuthDeg);
+  const { along: roofAlong, across: roofAcross } = projectedRoofSpans(
+    roofLength,
+    roofWidth,
+    roofLenAzimuthDeg,
+    rowAzimuthDeg
+  );
 
   const items: {
     panels: number;
@@ -332,7 +337,8 @@ const suggestRoofFit = ({
   const usedAlong = rows.reduce((m, r) => Math.max(m, r.usedAlong), 0);
   const usedSupportAlong = rows.reduce((m, r) => Math.max(m, r.usedSupportAlong), 0);
 
-  const usedAcross = rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
+  const usedAcross =
+    rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
 
   const usedSupportAcross =
     rowSupportWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
@@ -519,9 +525,7 @@ const HardwareTotals = ({
 
   const totals = useMemo(() => {
     const perPanel =
-      uClampsPerPanel === ""
-        ? HARDWARE_PER_STRUCTURE.uClampsPerPanel
-        : Math.max(0, Math.floor(toNum(uClampsPerPanel, 0)));
+      uClampsPerPanel === "" ? HARDWARE_PER_STRUCTURE.uClampsPerPanel : Math.max(0, Math.floor(toNum(uClampsPerPanel, 0)));
 
     const qty = {
       structures: totalStructures,
@@ -551,16 +555,7 @@ const HardwareTotals = ({
     };
 
     return { qty, cost };
-  }, [
-    totalStructures,
-    totalPanels,
-    basePlatePrice,
-    anchorBoltPrice,
-    angleFitterPrice,
-    normalBoltPrice,
-    uClampPrice,
-    uClampsPerPanel,
-  ]);
+  }, [totalStructures, totalPanels, basePlatePrice, anchorBoltPrice, angleFitterPrice, normalBoltPrice, uClampPrice, uClampsPerPanel]);
 
   return (
     <div className={`${cardClass} p-6 mt-6`}>
@@ -657,9 +652,7 @@ const ResultsTable = ({
           rods.isUniform ? "bg-green-900/20 border-green-800" : "bg-yellow-900/20 border-yellow-800"
         }`}
       >
-        <div className="font-semibold mb-1">
-          {rods.isUniform ? "Uniform structures" : "Mixed structures"}
-        </div>
+        <div className="font-semibold mb-1">{rods.isUniform ? "Uniform structures" : "Mixed structures"}</div>
         <div className="text-gray-200">
           {structures
             .map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`)
@@ -682,14 +675,11 @@ const ResultsTable = ({
 
           <tr>
             <td className="border-b border-gray-800 p-2">Structure Distribution</td>
-            <td className="border-b border-gray-800 p-2">
-              {structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}
-            </td>
+            <td className="border-b border-gray-800 p-2">{structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}</td>
           </tr>
 
           {rods.breakdown.map((b: any, idx: number) => (
             <React.Fragment key={`${b.panels}-${idx}`}>
-              {/* ✅ FOOTPRINT IN HEADER ROW - WITH "Footprint" TITLE */}
               <tr className="bg-gray-950/40">
                 <td className="border-b border-gray-800 p-2 font-semibold">
                   {b.count} × {b.panels}-panel structure
@@ -727,9 +717,7 @@ const ResultsTable = ({
 
           <tr className="bg-green-900/30">
             <td className="border-b border-gray-800 p-2 font-bold text-lg">Total GI Rods (164")</td>
-            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">
-              {rods.totals.totalRodsNeeded}
-            </td>
+            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">{rods.totals.totalRodsNeeded}</td>
           </tr>
 
           <tr className="bg-yellow-300/30">
@@ -785,8 +773,9 @@ const RoofFitCard = ({
           </div>
 
           <div
-            className={`p-4 rounded-xl border mb-4 ${currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
-              }`}
+            className={`p-4 rounded-xl border mb-4 ${
+              currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+            }`}
           >
             <div className="text-gray-100 font-semibold mb-2">
               Current structure layout: {currentFit.fitsPanels ? "Fits" : "Does NOT fit"}
@@ -804,8 +793,9 @@ const RoofFitCard = ({
           </div>
 
           <div
-            className={`p-4 rounded-xl border ${optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
-              }`}
+            className={`p-4 rounded-xl border ${
+              optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+            }`}
           >
             <div className="text-gray-100 font-semibold mb-2">Roof-optimized suggestion</div>
 
@@ -847,23 +837,19 @@ const toNumSafe = (v: string, fallback = 0) => {
 
 const totalPanelsFromResults = (results: any) => {
   if (!results?.structures?.length) return 0;
-  return results.structures.reduce((sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0), 0);
+  return results.structures.reduce(
+    (sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0),
+    0
+  );
 };
 
-const extendCostWithUClamps = (
-  base: CostData | null,
-  results: any,
-  uClampPriceStr: string,
-  uClampsPerPanelStr: string
-): CostData | null => {
+const extendCostWithUClamps = (base: CostData | null, results: any, uClampPriceStr: string, uClampsPerPanelStr: string): CostData | null => {
   if (!base) return null;
 
   const panels = totalPanelsFromResults(results);
 
   const perPanel =
-    uClampsPerPanelStr === ""
-      ? HARDWARE_PER_STRUCTURE.uClampsPerPanel
-      : Math.max(0, Math.floor(toNumSafe(uClampsPerPanelStr, 0)));
+    uClampsPerPanelStr === "" ? HARDWARE_PER_STRUCTURE.uClampsPerPanel : Math.max(0, Math.floor(toNumSafe(uClampsPerPanelStr, 0)));
 
   const qtyUClamps = panels * perPanel;
 
@@ -1016,7 +1002,7 @@ const InputForm = ({
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
     if (maxPanelsPerRod <= 0) {
-      alert('Panel length too large to fit on a 164-inch rod with gap.');
+      alert("Panel length too large to fit on a 164-inch rod with gap.");
       return;
     }
 
@@ -1068,7 +1054,9 @@ const InputForm = ({
             />
           </div>
 
-          <div className="sm:col-span-2 text-gray-400 text-sm">Panels should face South and be tilted 19° towards South. Rows assumed East–West.</div>
+          <div className="sm:col-span-2 text-gray-400 text-sm">
+            Panels should face South and be tilted 19° towards South. Rows assumed East–West.
+          </div>
         </div>
       </div>
 
@@ -1199,7 +1187,9 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
 
         <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
           <div className="text-gray-400 text-xs">Installation charges</div>
-          <div className="text-gray-100 font-semibold text-2xl">₹ {money(((cost as any).price?.installation ?? 0) as number)}</div>
+          <div className="text-gray-100 font-semibold text-2xl">
+            ₹ {money(((cost as any).price?.installation ?? 0) as number)}
+          </div>
         </div>
 
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-900/10 p-4">
@@ -1213,8 +1203,8 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
 
         <div className="text-gray-300 text-sm space-y-1">
           <div>
-            Rods (inches): {Number((cost as any).qty?.inchesUsed).toFixed(0)}" × ₹{money((cost as any).price?.rodPerInch)} / inch =
-            ₹{money((cost as any).items?.rodsByInches)}
+            Rods (inches): {Number((cost as any).qty?.inchesUsed).toFixed(0)}" × ₹{money((cost as any).price?.rodPerInch)} / inch = ₹
+            {money((cost as any).items?.rodsByInches)}
           </div>
 
           <div>
@@ -1245,7 +1235,11 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
 /** ===== Home ===== */
 export default function HomeClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const projectId = searchParams.get("projectId");
+
+  // null = new/unsaved project, string = editing existing saved record
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   const [panelModels, setPanelModels] = useState<PanelRow[]>([]);
   const [results, setResults] = useState<any>(null);
@@ -1296,6 +1290,11 @@ export default function HomeClient() {
   }, []);
 
   useEffect(() => {
+    // if URL has projectId, we are editing an existing project
+    setActiveProjectId(projectId || null);
+  }, [projectId]);
+
+  useEffect(() => {
     if (!projectId) return;
 
     (async () => {
@@ -1324,6 +1323,9 @@ export default function HomeClient() {
         setWastagePercent(String(pricing.wastagePercent ?? "15"));
 
         setResults(p.results || null);
+
+        // ensure in edit mode
+        setActiveProjectId(p.id);
       } catch (e: any) {
         alert(e?.message || "Failed to load project from cloud.");
       }
@@ -1336,6 +1338,7 @@ export default function HomeClient() {
     }
   }, [panelModels, selectedPanelModel]);
 
+  // ✅ computeCost in your project is called with an object param
   const baseCost: CostData | null = useMemo(() => {
     return computeCost({
       results,
@@ -1348,17 +1351,7 @@ export default function HomeClient() {
       installationCharges,
       wastagePercent,
     } as any);
-  }, [
-    results,
-    rodPrice,
-    basePlatePrice,
-    anchorBoltPrice,
-    angleFitterPrice,
-    normalBoltPrice,
-    fabricationCharges,
-    installationCharges,
-    wastagePercent,
-  ]);
+  }, [results, rodPrice, basePlatePrice, anchorBoltPrice, angleFitterPrice, normalBoltPrice, fabricationCharges, installationCharges, wastagePercent]);
 
   const cost: CostData | null = useMemo(() => {
     return extendCostWithUClamps(baseCost, results, uClampPrice, uClampsPerPanel);
@@ -1444,6 +1437,7 @@ export default function HomeClient() {
     return { maxPerStructure, maxByRoof, structures, fit };
   }, [results, roofLength, roofWidth, roofLenAzimuthDeg, panelModels, selectedPanelModel, isVertical, numberOfPanels]);
 
+  // ✅ Save project: create new OR update same record
   const onSaveProject = async () => {
     if (!projectName.trim()) {
       alert("Enter project name.");
@@ -1454,33 +1448,45 @@ export default function HomeClient() {
       return;
     }
 
-    try {
-      await createProject({
-        name: projectName.trim(),
-        inputs: {
-          frontLegHeight,
-          numberOfPanels,
-          selectedPanelModel,
-          isVertical,
-          pricing: {
-            rodPrice,
-            basePlatePrice,
-            anchorBoltPrice,
-            angleFitterPrice,
-            normalBoltPrice,
-            uClampPrice,
-            uClampsPerPanel,
-            serviceCharges: fabricationCharges,
-            fabricationCharges,
-            installationCharges,
-            wastagePercent,
-          },
-        },
-        results,
-      });
+    const payload = {
+      name: projectName.trim(),
+      inputs: {
+        frontLegHeight,
+        numberOfPanels,
+        selectedPanelModel,
+        isVertical,
+        pricing: {
+          rodPrice,
+          basePlatePrice,
+          anchorBoltPrice,
+          angleFitterPrice,
+          normalBoltPrice,
+          uClampPrice,
+          uClampsPerPanel,
 
-      alert("Project saved to cloud. Go to Projects to view/edit.");
-      setProjectName("");
+          // keep both keys (your DB already uses both)
+          serviceCharges: fabricationCharges,
+          fabricationCharges,
+
+          installationCharges,
+          wastagePercent,
+        },
+      },
+      results,
+    };
+
+    try {
+      if (activeProjectId) {
+        await updateProject(activeProjectId, payload);
+        alert("Saved changes to the same project.");
+        return;
+      }
+
+      const created = await createProject(payload);
+      alert("Project saved to cloud.");
+
+      setActiveProjectId(created.id);
+      router.replace(`/?projectId=${created.id}`);
     } catch (e: any) {
       alert(e?.message || "Failed to save project.");
     }
@@ -1646,13 +1652,7 @@ export default function HomeClient() {
 
         <ResultsTable results={results} panelLen={panelDims.panelLen} panelWid={panelDims.panelWid} />
 
-        <RoofFitCard
-          currentFit={currentRoofFit}
-          optimized={roofOptimized}
-          roofLength={roofLength}
-          roofWidth={roofWidth}
-          roofLenAzimuthDeg={roofLenAzimuthDeg}
-        />
+        <RoofFitCard currentFit={currentRoofFit} optimized={roofOptimized} roofLength={roofLength} roofWidth={roofWidth} roofLenAzimuthDeg={roofLenAzimuthDeg} />
 
         <RodCuttingSuggestions results={results} />
 
@@ -1669,16 +1669,7 @@ export default function HomeClient() {
         <CostSummary cost={cost} />
 
         <div className={`${cardClass} p-6 mt-6`}>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-gray-100">Save as project</h2>
-            <Link
-              href="/projects"
-              className="rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors px-4 py-2 border border-gray-700"
-            >
-              Projects
-            </Link>
-          </div>
-
+          
           <div className="mt-4">
             <label className="block text-gray-300 mb-2">Project name</label>
             <input value={projectName} onChange={(e) => setProjectName(e.target.value)} className={fieldClass} />
@@ -1689,7 +1680,7 @@ export default function HomeClient() {
             onClick={onSaveProject}
             className="mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition"
           >
-            Save Project
+            {activeProjectId ? "Save Changes" : "Save Project"}
           </button>
         </div>
 
