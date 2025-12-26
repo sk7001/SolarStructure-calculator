@@ -10,12 +10,12 @@ const ROD_LENGTH = 164;
 const GAP = 5;
 const TILT_ANGLE = 19;
 
-// Hardware per structure (as you requested)
+// Hardware per structure
 const HARDWARE_PER_STRUCTURE = {
   basePlates: 4,
   anchorBolts: 16,
   angleAttachers: 4,
-  nuts: 24,
+  nuts: 24, // normal bolts
 };
 
 /** ===== Calculations (UNCHANGED) ===== */
@@ -61,7 +61,12 @@ const calculateLegsPerStructure = (
   };
 };
 
-const calculateRodsForProject = (structures: any[], frontLegHeight: number, panelLen: number, rodLength: number = ROD_LENGTH) => {
+const calculateRodsForProject = (
+  structures: any[],
+  frontLegHeight: number,
+  panelLen: number,
+  rodLength: number = ROD_LENGTH
+) => {
   let totalInches = 0;
   let totalFrontLegs = 0;
   let totalRearLegs = 0;
@@ -247,23 +252,58 @@ const RodCuttingSuggestions = ({ results }: { results: any }) => {
   );
 };
 
-/** ===== Hardware totals ===== */
+/** ===== Hardware totals (qty + cost) ===== */
 
-const HardwareTotals = ({ results }: { results: any }) => {
+const HardwareTotals = ({
+  results,
+  basePlatePrice,
+  anchorBoltPrice,
+  angleFitterPrice,
+  normalBoltPrice,
+}: {
+  results: any;
+  basePlatePrice: string;
+  anchorBoltPrice: string;
+  angleFitterPrice: string;
+  normalBoltPrice: string;
+}) => {
   const totalStructures = useMemo(() => {
     if (!results?.structures?.length) return 0;
     return results.structures.reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
   }, [results]);
 
+  const toNum = (v: string, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
   const totals = useMemo(() => {
-    return {
+    const qty = {
       structures: totalStructures,
       basePlates: totalStructures * HARDWARE_PER_STRUCTURE.basePlates,
       anchorBolts: totalStructures * HARDWARE_PER_STRUCTURE.anchorBolts,
       angleAttachers: totalStructures * HARDWARE_PER_STRUCTURE.angleAttachers,
       nuts: totalStructures * HARDWARE_PER_STRUCTURE.nuts,
     };
-  }, [totalStructures]);
+
+    const price = {
+      basePlate: toNum(basePlatePrice, 150),
+      anchorBolt: toNum(anchorBoltPrice, 20),
+      angleFitter: toNum(angleFitterPrice, 150),
+      normalBolt: toNum(normalBoltPrice, 15),
+    };
+
+    const cost = {
+      basePlates: qty.basePlates * price.basePlate,
+      anchorBolts: qty.anchorBolts * price.anchorBolt,
+      angleAttachers: qty.angleAttachers * price.angleFitter,
+      nuts: qty.nuts * price.normalBolt,
+    };
+
+    return { qty, cost };
+  }, [totalStructures, basePlatePrice, anchorBoltPrice, angleFitterPrice, normalBoltPrice]);
 
   return (
     <div className={`${cardClass} p-6 mt-6`}>
@@ -274,126 +314,45 @@ const HardwareTotals = ({ results }: { results: any }) => {
       ) : (
         <>
           <div className="text-gray-300 text-sm mb-4">
-            Total structures: <span className="text-gray-100 font-semibold">{totals.structures}</span>
+            Total structures: <span className="text-gray-100 font-semibold">{totals.qty.structures}</span>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
               <div className="text-gray-400 text-xs">Base plates</div>
-              <div className="text-gray-100 font-semibold text-2xl">{totals.basePlates}</div>
+              <div className="flex items-baseline justify-between gap-2 mt-1">
+                <div className="text-gray-100 font-semibold text-2xl">{totals.qty.basePlates}</div>
+                <div className="text-emerald-300 font-semibold text-sm">₹ {money(totals.cost.basePlates)}</div>
+              </div>
             </div>
 
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
               <div className="text-gray-400 text-xs">Anchor bolts</div>
-              <div className="text-gray-100 font-semibold text-2xl">{totals.anchorBolts}</div>
+              <div className="flex items-baseline justify-between gap-2 mt-1">
+                <div className="text-gray-100 font-semibold text-2xl">{totals.qty.anchorBolts}</div>
+                <div className="text-emerald-300 font-semibold text-sm">₹ {money(totals.cost.anchorBolts)}</div>
+              </div>
             </div>
 
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-              <div className="text-gray-400 text-xs">Angle attachers</div>
-              <div className="text-gray-100 font-semibold text-2xl">{totals.angleAttachers}</div>
+              <div className="text-gray-400 text-xs">Angle fitters</div>
+              <div className="flex items-baseline justify-between gap-2 mt-1">
+                <div className="text-gray-100 font-semibold text-2xl">{totals.qty.angleAttachers}</div>
+                <div className="text-emerald-300 font-semibold text-sm">₹ {money(totals.cost.angleAttachers)}</div>
+              </div>
             </div>
 
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-              <div className="text-gray-400 text-xs">Nuts</div>
-              <div className="text-gray-100 font-semibold text-2xl">{totals.nuts}</div>
+              <div className="text-gray-400 text-xs">Normal bolts</div>
+              <div className="flex items-baseline justify-between gap-2 mt-1">
+                <div className="text-gray-100 font-semibold text-2xl">{totals.qty.nuts}</div>
+                <div className="text-emerald-300 font-semibold text-sm">₹ {money(totals.cost.nuts)}</div>
+              </div>
             </div>
           </div>
         </>
       )}
     </div>
-  );
-};
-
-/** ===== Drawer + Navbar ===== */
-
-const DrawerMenu = ({ onClose }: { onClose: () => void }) => {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-50 bg-gray-950">
-      <div onClick={onClose} className="fixed inset-0 z-40 bg-gray-950" />
-
-      <aside className="fixed left-0 top-0 z-50 h-full w-80 bg-gray-950 border-r border-gray-800 shadow-2xl">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <div>
-            <div className="text-gray-100 font-semibold text-lg">Menu</div>
-            <div className="text-gray-400 text-xs">Solar Structure</div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-100 bg-gray-800 hover:bg-gray-700 transition-colors px-3 py-2 rounded-lg"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="p-4 space-y-3">
-          <Link
-            href="/projects"
-            onClick={onClose}
-            className="block rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-colors p-4"
-          >
-            <div className="text-gray-100 font-semibold">Projects</div>
-            <div className="text-gray-400 text-sm mt-1">Save individual projects with a name</div>
-          </Link>
-
-          <Link
-            href="/panels"
-            onClick={onClose}
-            className="block rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-colors p-4"
-          >
-            <div className="text-gray-100 font-semibold">List of Panels</div>
-            <div className="text-gray-400 text-sm mt-1">View / add / manage panel models</div>
-          </Link>
-
-          <Link
-            href="/pieces"
-            onClick={onClose}
-            className="block rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 transition-colors p-4"
-          >
-            <div className="text-gray-100 font-semibold">Old Inventory (Usable Pieces)</div>
-            <div className="text-gray-400 text-sm mt-1">Save and view leftover usable pieces</div>
-          </Link>
-        </div>
-      </aside>
-    </div>
-  );
-};
-
-const Navbar = () => {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <nav className="bg-gray-950 text-gray-100 p-4 flex items-center justify-between sticky top-0 z-30 border-b border-gray-800">
-      <button
-        onClick={() => setOpen(true)}
-        className="text-gray-100 focus:outline-none rounded-lg hover:bg-gray-800 transition-colors p-2"
-        aria-label="Open menu"
-        type="button"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-
-      <h1 className="text-lg sm:text-xl font-bold tracking-wide">Solar Structure Cost Calculator</h1>
-      <div className="w-10" />
-
-      {open && <DrawerMenu onClose={() => setOpen(false)} />}
-    </nav>
   );
 };
 
@@ -413,9 +372,11 @@ const ResultsTable = ({ results }: { results: any }) => {
           rods.isUniform ? "bg-green-900/20 border-green-800" : "bg-yellow-900/20 border-yellow-800"
         }`}
       >
-        <div className="font-semibold mb-1">{rods.isUniform ? "✅ Uniform Structures" : "⚠️ Mixed Structures"}</div>
+        <div className="font-semibold mb-1">{rods.isUniform ? "Uniform structures" : "Mixed structures"}</div>
         <div className="text-gray-200">
-          {structures.map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`).join("")}
+          {structures
+            .map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`)
+            .join("")}
         </div>
       </div>
 
@@ -478,7 +439,7 @@ const ResultsTable = ({ results }: { results: any }) => {
   );
 };
 
-/** ===== Form ===== */
+/** ===== Form (Prices ABOVE Calculate) ===== */
 
 const InputForm = ({
   panelModels,
@@ -491,6 +452,21 @@ const InputForm = ({
   setSelectedPanelModel,
   isVertical,
   setIsVertical,
+
+  rodPrice,
+  setRodPrice,
+  basePlatePrice,
+  setBasePlatePrice,
+  anchorBoltPrice,
+  setAnchorBoltPrice,
+  angleFitterPrice,
+  setAngleFitterPrice,
+  normalBoltPrice,
+  setNormalBoltPrice,
+  serviceCharges,
+  setServiceCharges,
+  wastagePercent,
+  setWastagePercent,
 }: {
   panelModels: PanelRow[];
   onCalculate: (res: any) => void;
@@ -502,6 +478,21 @@ const InputForm = ({
   setSelectedPanelModel: (v: string) => void;
   isVertical: boolean;
   setIsVertical: (v: boolean) => void;
+
+  rodPrice: string;
+  setRodPrice: (v: string) => void;
+  basePlatePrice: string;
+  setBasePlatePrice: (v: string) => void;
+  anchorBoltPrice: string;
+  setAnchorBoltPrice: (v: string) => void;
+  angleFitterPrice: string;
+  setAngleFitterPrice: (v: string) => void;
+  normalBoltPrice: string;
+  setNormalBoltPrice: (v: string) => void;
+  serviceCharges: string;
+  setServiceCharges: (v: string) => void;
+  wastagePercent: string;
+  setWastagePercent: (v: string) => void;
 }) => {
   useEffect(() => {
     if (panelModels.length && !panelModels.find((p) => p.name === selectedPanelModel)) {
@@ -523,8 +514,6 @@ const InputForm = ({
 
     const longSide = Math.max(Number(selectedModel.width), Number(selectedModel.height));
     const shortSide = Math.min(Number(selectedModel.width), Number(selectedModel.height));
-
-    // Your requirement: Vertical => longSide, Horizontal => shortSide
     const panelLen = isVertical ? longSide : shortSide;
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
@@ -572,7 +561,7 @@ const InputForm = ({
         </select>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-6">
         <label className="block text-gray-300 mb-2">Orientation</label>
         <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-4 h-14">
           <input type="checkbox" checked={isVertical} onChange={(e) => setIsVertical(e.target.checked)} />
@@ -580,12 +569,185 @@ const InputForm = ({
         </div>
       </div>
 
+      {/* Prices ABOVE Calculate button */}
+      <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4 mb-6">
+        <div className="text-gray-100 font-semibold mb-3">Prices & charges</div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-gray-300 mb-2">Per rod price</label>
+            <input type="number" value={rodPrice} onChange={(e) => setRodPrice(e.target.value)} className={fieldClass} />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Base plate price</label>
+            <input type="number" value={basePlatePrice} onChange={(e) => setBasePlatePrice(e.target.value)} className={fieldClass} />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Anchor bolt price</label>
+            <input type="number" value={anchorBoltPrice} onChange={(e) => setAnchorBoltPrice(e.target.value)} className={fieldClass} />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Angle fitter price</label>
+            <input type="number" value={angleFitterPrice} onChange={(e) => setAngleFitterPrice(e.target.value)} className={fieldClass} />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Normal bolts price</label>
+            <input type="number" value={normalBoltPrice} onChange={(e) => setNormalBoltPrice(e.target.value)} className={fieldClass} />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Service charges</label>
+            <input type="number" value={serviceCharges} onChange={(e) => setServiceCharges(e.target.value)} className={fieldClass} />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-gray-300 mb-2">Wastage charges (%)</label>
+            <input type="number" value={wastagePercent} onChange={(e) => setWastagePercent(e.target.value)} className={fieldClass} />
+          </div>
+        </div>
+      </div>
+
+      {/* Calculate button BELOW Prices */}
       <button
+        type="button"
         onClick={handleCalculate}
-        className="mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition w-full"
+        className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition w-full"
       >
         Calculate
       </button>
+    </div>
+  );
+};
+
+/** ===== Cost summary (bottom) ===== */
+
+const CostSummary = ({
+  results,
+  rodPrice,
+  basePlatePrice,
+  anchorBoltPrice,
+  angleFitterPrice,
+  normalBoltPrice,
+  serviceCharges,
+  wastagePercent,
+}: {
+  results: any;
+  rodPrice: string;
+  basePlatePrice: string;
+  anchorBoltPrice: string;
+  angleFitterPrice: string;
+  normalBoltPrice: string;
+  serviceCharges: string;
+  wastagePercent: string;
+}) => {
+  const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+  const toNum = (v: string, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const cost = useMemo(() => {
+    const inchesStr = results?.rods?.totals?.totalInchesRequired;
+    const hasStructures = Array.isArray(results?.structures) && results.structures.length > 0;
+
+    if (!inchesStr || !hasStructures) return null;
+
+    const inchesUsed = Number(inchesStr) || 0;
+
+    const structures = results.structures.reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
+
+    const qty = {
+      inchesUsed, // NEW: use inches instead of rods
+      basePlates: structures * HARDWARE_PER_STRUCTURE.basePlates,
+      anchorBolts: structures * HARDWARE_PER_STRUCTURE.anchorBolts,
+      angleFitters: structures * HARDWARE_PER_STRUCTURE.angleAttachers,
+      normalBolts: structures * HARDWARE_PER_STRUCTURE.nuts,
+    };
+
+    // Convert per-rod price into per-inch price
+    const perRod = toNum(rodPrice, 1000);
+    const rodPricePerInch = perRod / ROD_LENGTH;
+
+    const price = {
+      rodPerInch: rodPricePerInch,
+      basePlate: toNum(basePlatePrice, 150),
+      anchorBolt: toNum(anchorBoltPrice, 20),
+      angleFitter: toNum(angleFitterPrice, 150),
+      normalBolt: toNum(normalBoltPrice, 15),
+      service: toNum(serviceCharges, 1500),
+      wastagePct: toNum(wastagePercent, 15),
+    };
+
+    const items = {
+      rodsByInches: qty.inchesUsed * price.rodPerInch, // NEW: inches-based rod cost
+      basePlates: qty.basePlates * price.basePlate,
+      anchorBolts: qty.anchorBolts * price.anchorBolt,
+      angleFitters: qty.angleFitters * price.angleFitter,
+      normalBolts: qty.normalBolts * price.normalBolt,
+    };
+
+    const subtotal =
+      items.rodsByInches + items.basePlates + items.anchorBolts + items.angleFitters + items.normalBolts;
+
+    const wastage = (subtotal * price.wastagePct) / 100;
+    const total = subtotal + wastage + price.service;
+
+    return { qty, price, items, subtotal, wastage, total };
+  }, [results, rodPrice, basePlatePrice, anchorBoltPrice, angleFitterPrice, normalBoltPrice, serviceCharges, wastagePercent]);
+
+  if (!cost) {
+    return (
+      <div className={`${cardClass} p-6 mt-6`}>
+        <h2 className="text-xl font-semibold mb-2 text-gray-100">Cost summary</h2>
+        <div className="text-gray-400 text-sm">Calculate first to see cost.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${cardClass} p-6 mt-6`}>
+      <h2 className="text-xl font-semibold mb-4 text-gray-100">Cost summary</h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+          <div className="text-gray-400 text-xs">Subtotal (materials + hardware)</div>
+          <div className="text-gray-100 font-semibold text-2xl">₹ {money(cost.subtotal)}</div>
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+          <div className="text-gray-400 text-xs">Wastage ({Number(cost.price.wastagePct).toFixed(0)}%)</div>
+          <div className="text-gray-100 font-semibold text-2xl">₹ {money(cost.wastage)}</div>
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+          <div className="text-gray-400 text-xs">Service charges</div>
+          <div className="text-gray-100 font-semibold text-2xl">₹ {money(cost.price.service)}</div>
+        </div>
+
+        <div className="rounded-xl border border-emerald-900/40 bg-emerald-900/10 p-4">
+          <div className="text-gray-300 text-xs">Grand total</div>
+          <div className="text-emerald-200 font-semibold text-2xl">₹ {money(cost.total)}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+        <div className="text-gray-100 font-semibold mb-2">Breakdown</div>
+        <div className="text-gray-300 text-sm space-y-1">
+          <div>
+            Rods (inches): {Number(cost.qty.inchesUsed).toFixed(0)}" × ₹{money(cost.price.rodPerInch)} / inch = ₹
+            {money(cost.items.rodsByInches)}
+          </div>
+          <div>Base plates: {cost.qty.basePlates} × ₹{money(cost.price.basePlate)} = ₹{money(cost.items.basePlates)}</div>
+          <div>Anchor bolts: {cost.qty.anchorBolts} × ₹{money(cost.price.anchorBolt)} = ₹{money(cost.items.anchorBolts)}</div>
+          <div>Angle fitters: {cost.qty.angleFitters} × ₹{money(cost.price.angleFitter)} = ₹{money(cost.items.angleFitters)}</div>
+          <div>Normal bolts: {cost.qty.normalBolts} × ₹{money(cost.price.normalBolt)} = ₹{money(cost.items.normalBolts)}</div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -599,16 +761,25 @@ export default function Home() {
   const [panelModels, setPanelModels] = useState<PanelRow[]>([]);
   const [results, setResults] = useState<any>(null);
 
-  // Inputs lifted here so we can save them
+  // Inputs
   const [frontLegHeight, setFrontLegHeight] = useState("");
   const [numberOfPanels, setNumberOfPanels] = useState("");
   const [selectedPanelModel, setSelectedPanelModel] = useState("");
   const [isVertical, setIsVertical] = useState(false);
 
+  // Prices (defaults)
+  const [rodPrice, setRodPrice] = useState("1000");
+  const [basePlatePrice, setBasePlatePrice] = useState("150");
+  const [anchorBoltPrice, setAnchorBoltPrice] = useState("20");
+  const [angleFitterPrice, setAngleFitterPrice] = useState("150");
+  const [normalBoltPrice, setNormalBoltPrice] = useState("15");
+  const [serviceCharges, setServiceCharges] = useState("1500");
+  const [wastagePercent, setWastagePercent] = useState("15");
+
   // Save-as-project
   const [projectName, setProjectName] = useState("");
 
-  // Hydration fix: render the select ONLY after client loaded panels
+  // Hydration fix
   const [isReady, setIsReady] = useState(false);
 
   // Load panels from cloud
@@ -632,13 +803,24 @@ export default function Home() {
 
     (async () => {
       try {
-        const p = await getProjectById(projectId);
+        const p: any = await getProjectById(projectId);
 
         setProjectName(p.name || "");
         setFrontLegHeight(p.inputs?.frontLegHeight || "");
         setNumberOfPanels(p.inputs?.numberOfPanels || "");
         setSelectedPanelModel(p.inputs?.selectedPanelModel || "");
         setIsVertical(Boolean(p.inputs?.isVertical));
+
+        // restore pricing (fallback to defaults)
+        const pricing = p.inputs?.pricing || {};
+        setRodPrice(String(pricing.rodPrice ?? "1000"));
+        setBasePlatePrice(String(pricing.basePlatePrice ?? "150"));
+        setAnchorBoltPrice(String(pricing.anchorBoltPrice ?? "20"));
+        setAngleFitterPrice(String(pricing.angleFitterPrice ?? "150"));
+        setNormalBoltPrice(String(pricing.normalBoltPrice ?? "15"));
+        setServiceCharges(String(pricing.serviceCharges ?? "1500"));
+        setWastagePercent(String(pricing.wastagePercent ?? "15"));
+
         setResults(p.results || null);
       } catch (e: any) {
         alert(e?.message || "Failed to load project from cloud.");
@@ -662,9 +844,24 @@ export default function Home() {
     try {
       await createProject({
         name: projectName.trim(),
-        inputs: { frontLegHeight, numberOfPanels, selectedPanelModel, isVertical },
+        inputs: {
+          frontLegHeight,
+          numberOfPanels,
+          selectedPanelModel,
+          isVertical,
+          pricing: {
+            rodPrice,
+            basePlatePrice,
+            anchorBoltPrice,
+            angleFitterPrice,
+            normalBoltPrice,
+            serviceCharges,
+            wastagePercent,
+          },
+        },
         results,
       });
+
       alert("Project saved to cloud. Go to Projects to view/edit.");
       setProjectName("");
     } catch (e: any) {
@@ -691,12 +888,45 @@ export default function Home() {
             setSelectedPanelModel={setSelectedPanelModel}
             isVertical={isVertical}
             setIsVertical={setIsVertical}
+            rodPrice={rodPrice}
+            setRodPrice={setRodPrice}
+            basePlatePrice={basePlatePrice}
+            setBasePlatePrice={setBasePlatePrice}
+            anchorBoltPrice={anchorBoltPrice}
+            setAnchorBoltPrice={setAnchorBoltPrice}
+            angleFitterPrice={angleFitterPrice}
+            setAngleFitterPrice={setAngleFitterPrice}
+            normalBoltPrice={normalBoltPrice}
+            setNormalBoltPrice={setNormalBoltPrice}
+            serviceCharges={serviceCharges}
+            setServiceCharges={setServiceCharges}
+            wastagePercent={wastagePercent}
+            setWastagePercent={setWastagePercent}
           />
         )}
 
         <ResultsTable results={results} />
         <RodCuttingSuggestions results={results} />
-        <HardwareTotals results={results} />
+
+        <HardwareTotals
+          results={results}
+          basePlatePrice={basePlatePrice}
+          anchorBoltPrice={anchorBoltPrice}
+          angleFitterPrice={angleFitterPrice}
+          normalBoltPrice={normalBoltPrice}
+        />
+
+        {/* Cost summary at the bottom, above Save Project */}
+        <CostSummary
+          results={results}
+          rodPrice={rodPrice}
+          basePlatePrice={basePlatePrice}
+          anchorBoltPrice={anchorBoltPrice}
+          angleFitterPrice={angleFitterPrice}
+          normalBoltPrice={normalBoltPrice}
+          serviceCharges={serviceCharges}
+          wastagePercent={wastagePercent}
+        />
 
         {/* Save as Project (bottom) */}
         <div className={`${cardClass} p-6 mt-6`}>
