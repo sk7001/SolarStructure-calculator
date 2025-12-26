@@ -129,7 +129,7 @@ export default function EstimationPdfJsPdf({
       body: [
         ["Subtotal", `INR ${money(cost.subtotal)}`],
         [`Wastage (${Number(cost.price.wastagePct).toFixed(0)}%)`, `INR ${money(cost.wastage)}`],
-        ["Service charges", `INR ${money(cost.price.service)}`],
+        ["Fabrication charges", `INR ${money(cost.price.service)}`],
         ["GRAND TOTAL", `INR ${money(cost.total)}`],
       ],
       styles: { font: "helvetica", fontSize: 11, cellPadding: 6 },
