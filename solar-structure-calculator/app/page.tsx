@@ -3,8 +3,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+
 import { listPanels, seedDefaultPanelsIfEmpty, type PanelRow } from "./lib/panelsDb";
 import { createProject, getProjectById } from "./lib/projectsDb";
+
+import { computeCost, type CostData } from "./lib/costing";
+import EstimationPdfJsPdf from "./components/EstimationPdfJsPdf";
+
 
 const ROD_LENGTH = 164;
 const GAP = 5;
@@ -18,8 +23,7 @@ const HARDWARE_PER_STRUCTURE = {
   nuts: 24, // normal bolts
 };
 
-/** ===== Calculations (UNCHANGED) ===== */
-
+/** ===== Calculations ===== */
 const calculatePanelsPerRod = (panelLen: number, rodLength: number = ROD_LENGTH, gap: number = GAP) => {
   let maxPanels = 0;
   while (maxPanels * panelLen + (maxPanels - 1) * gap <= rodLength) {
@@ -48,7 +52,7 @@ const calculateLegsPerStructure = (
   gap: number = GAP
 ) => {
   const totalHypotenuse = (panelLen + gap) * panelsPerStructure;
-  const triangleHeight = totalHypotenuse * Math.sin((tiltAngle * Math.PI) / 180);
+  const triangleHeight = (totalHypotenuse * 2 / 3) * Math.sin((tiltAngle * Math.PI) / 180);
   const rearLegHeight = frontLegHeight + triangleHeight;
 
   return {
@@ -119,15 +123,15 @@ const calculateRodsForProject = (
 };
 
 /** ===== UI helpers ===== */
-
 const fieldClass =
   "w-full h-14 rounded-lg bg-gray-800 text-gray-100 border border-gray-700 px-4 " +
   "text-base outline-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30";
 
 const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
 
-/** ===== Cutting plan (compact UI) ===== */
+const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
+/** ===== Cutting plan (compact UI) ===== */
 type CutPiece = { type: string; len: number };
 type RodPlan = { cuts: CutPiece[]; used: number; waste: number };
 
@@ -253,7 +257,6 @@ const RodCuttingSuggestions = ({ results }: { results: any }) => {
 };
 
 /** ===== Hardware totals (qty + cost) ===== */
-
 const HardwareTotals = ({
   results,
   basePlatePrice,
@@ -276,8 +279,6 @@ const HardwareTotals = ({
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   };
-
-  const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
   const totals = useMemo(() => {
     const qty = {
@@ -357,7 +358,6 @@ const HardwareTotals = ({
 };
 
 /** ===== Results ===== */
-
 const ResultsTable = ({ results }: { results: any }) => {
   if (!results) return null;
 
@@ -394,7 +394,9 @@ const ResultsTable = ({ results }: { results: any }) => {
           </tr>
           <tr>
             <td className="border-b border-gray-800 p-2">Structure Distribution</td>
-            <td className="border-b border-gray-800 p-2">{structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}</td>
+            <td className="border-b border-gray-800 p-2">
+              {structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}
+            </td>
           </tr>
 
           {rods.breakdown.map((b: any, idx: number) => (
@@ -427,7 +429,9 @@ const ResultsTable = ({ results }: { results: any }) => {
 
           <tr className="bg-green-900/30">
             <td className="border-b border-gray-800 p-2 font-bold text-lg">TOTAL GI Rods (164")</td>
-            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">{rods.totals.totalRodsNeeded}</td>
+            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">
+              {rods.totals.totalRodsNeeded}
+            </td>
           </tr>
           <tr>
             <td className="border-b border-gray-800 p-2">Total Material Length</td>
@@ -440,7 +444,6 @@ const ResultsTable = ({ results }: { results: any }) => {
 };
 
 /** ===== Form (Prices ABOVE Calculate) ===== */
-
 const InputForm = ({
   panelModels,
   onCalculate,
@@ -470,27 +473,37 @@ const InputForm = ({
 }: {
   panelModels: PanelRow[];
   onCalculate: (res: any) => void;
+
   frontLegHeight: string;
   setFrontLegHeight: (v: string) => void;
+
   numberOfPanels: string;
   setNumberOfPanels: (v: string) => void;
+
   selectedPanelModel: string;
   setSelectedPanelModel: (v: string) => void;
+
   isVertical: boolean;
   setIsVertical: (v: boolean) => void;
 
   rodPrice: string;
   setRodPrice: (v: string) => void;
+
   basePlatePrice: string;
   setBasePlatePrice: (v: string) => void;
+
   anchorBoltPrice: string;
   setAnchorBoltPrice: (v: string) => void;
+
   angleFitterPrice: string;
   setAngleFitterPrice: (v: string) => void;
+
   normalBoltPrice: string;
   setNormalBoltPrice: (v: string) => void;
+
   serviceCharges: string;
   setServiceCharges: (v: string) => void;
+
   wastagePercent: string;
   setWastagePercent: (v: string) => void;
 }) => {
@@ -537,12 +550,22 @@ const InputForm = ({
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Front Leg Height (in inches)</label>
-        <input type="number" value={frontLegHeight} onChange={(e) => setFrontLegHeight(e.target.value)} className={fieldClass} />
+        <input
+          type="number"
+          value={frontLegHeight}
+          onChange={(e) => setFrontLegHeight(e.target.value)}
+          className={fieldClass}
+        />
       </div>
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Number of Panels</label>
-        <input type="number" value={numberOfPanels} onChange={(e) => setNumberOfPanels(e.target.value)} className={fieldClass} />
+        <input
+          type="number"
+          value={numberOfPanels}
+          onChange={(e) => setNumberOfPanels(e.target.value)}
+          className={fieldClass}
+        />
       </div>
 
       <div className="mb-4">
@@ -551,7 +574,6 @@ const InputForm = ({
           {panelModels.map((m) => {
             const longSide = Math.max(Number(m.width), Number(m.height));
             const shortSide = Math.min(Number(m.width), Number(m.height));
-
             return (
               <option key={m.id} value={m.name}>
                 {m.name} - {longSide}x{shortSide} - {m.description}
@@ -569,7 +591,6 @@ const InputForm = ({
         </div>
       </div>
 
-      {/* Prices ABOVE Calculate button */}
       <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4 mb-6">
         <div className="text-gray-100 font-semibold mb-3">Prices & charges</div>
 
@@ -581,37 +602,66 @@ const InputForm = ({
 
           <div>
             <label className="block text-gray-300 mb-2">Base plate price</label>
-            <input type="number" value={basePlatePrice} onChange={(e) => setBasePlatePrice(e.target.value)} className={fieldClass} />
+            <input
+              type="number"
+              value={basePlatePrice}
+              onChange={(e) => setBasePlatePrice(e.target.value)}
+              className={fieldClass}
+            />
           </div>
 
           <div>
             <label className="block text-gray-300 mb-2">Anchor bolt price</label>
-            <input type="number" value={anchorBoltPrice} onChange={(e) => setAnchorBoltPrice(e.target.value)} className={fieldClass} />
+            <input
+              type="number"
+              value={anchorBoltPrice}
+              onChange={(e) => setAnchorBoltPrice(e.target.value)}
+              className={fieldClass}
+            />
           </div>
 
           <div>
             <label className="block text-gray-300 mb-2">Angle fitter price</label>
-            <input type="number" value={angleFitterPrice} onChange={(e) => setAngleFitterPrice(e.target.value)} className={fieldClass} />
+            <input
+              type="number"
+              value={angleFitterPrice}
+              onChange={(e) => setAngleFitterPrice(e.target.value)}
+              className={fieldClass}
+            />
           </div>
 
           <div>
             <label className="block text-gray-300 mb-2">Normal bolts price</label>
-            <input type="number" value={normalBoltPrice} onChange={(e) => setNormalBoltPrice(e.target.value)} className={fieldClass} />
+            <input
+              type="number"
+              value={normalBoltPrice}
+              onChange={(e) => setNormalBoltPrice(e.target.value)}
+              className={fieldClass}
+            />
           </div>
 
           <div>
             <label className="block text-gray-300 mb-2">Service charges</label>
-            <input type="number" value={serviceCharges} onChange={(e) => setServiceCharges(e.target.value)} className={fieldClass} />
+            <input
+              type="number"
+              value={serviceCharges}
+              onChange={(e) => setServiceCharges(e.target.value)}
+              className={fieldClass}
+            />
           </div>
 
           <div className="sm:col-span-2">
             <label className="block text-gray-300 mb-2">Wastage charges (%)</label>
-            <input type="number" value={wastagePercent} onChange={(e) => setWastagePercent(e.target.value)} className={fieldClass} />
+            <input
+              type="number"
+              value={wastagePercent}
+              onChange={(e) => setWastagePercent(e.target.value)}
+              className={fieldClass}
+            />
           </div>
         </div>
       </div>
 
-      {/* Calculate button BELOW Prices */}
       <button
         type="button"
         onClick={handleCalculate}
@@ -623,83 +673,8 @@ const InputForm = ({
   );
 };
 
-/** ===== Cost summary (bottom) ===== */
-
-const CostSummary = ({
-  results,
-  rodPrice,
-  basePlatePrice,
-  anchorBoltPrice,
-  angleFitterPrice,
-  normalBoltPrice,
-  serviceCharges,
-  wastagePercent,
-}: {
-  results: any;
-  rodPrice: string;
-  basePlatePrice: string;
-  anchorBoltPrice: string;
-  angleFitterPrice: string;
-  normalBoltPrice: string;
-  serviceCharges: string;
-  wastagePercent: string;
-}) => {
-  const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-
-  const toNum = (v: string, fallback: number) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  };
-
-  const cost = useMemo(() => {
-    const inchesStr = results?.rods?.totals?.totalInchesRequired;
-    const hasStructures = Array.isArray(results?.structures) && results.structures.length > 0;
-
-    if (!inchesStr || !hasStructures) return null;
-
-    const inchesUsed = Number(inchesStr) || 0;
-
-    const structures = results.structures.reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
-
-    const qty = {
-      inchesUsed, // NEW: use inches instead of rods
-      basePlates: structures * HARDWARE_PER_STRUCTURE.basePlates,
-      anchorBolts: structures * HARDWARE_PER_STRUCTURE.anchorBolts,
-      angleFitters: structures * HARDWARE_PER_STRUCTURE.angleAttachers,
-      normalBolts: structures * HARDWARE_PER_STRUCTURE.nuts,
-    };
-
-    // Convert per-rod price into per-inch price
-    const perRod = toNum(rodPrice, 1000);
-    const rodPricePerInch = perRod / ROD_LENGTH;
-
-    const price = {
-      rodPerInch: rodPricePerInch,
-      basePlate: toNum(basePlatePrice, 150),
-      anchorBolt: toNum(anchorBoltPrice, 20),
-      angleFitter: toNum(angleFitterPrice, 150),
-      normalBolt: toNum(normalBoltPrice, 15),
-      service: toNum(serviceCharges, 1500),
-      wastagePct: toNum(wastagePercent, 15),
-    };
-
-    const items = {
-      rodsByInches: qty.inchesUsed * price.rodPerInch, // NEW: inches-based rod cost
-      basePlates: qty.basePlates * price.basePlate,
-      anchorBolts: qty.anchorBolts * price.anchorBolt,
-      angleFitters: qty.angleFitters * price.angleFitter,
-      normalBolts: qty.normalBolts * price.normalBolt,
-    };
-
-    const subtotal =
-      items.rodsByInches + items.basePlates + items.anchorBolts + items.angleFitters + items.normalBolts;
-
-    const wastage = (subtotal * price.wastagePct) / 100;
-    const total = subtotal + wastage + price.service;
-
-    return { qty, price, items, subtotal, wastage, total };
-  }, [results, rodPrice, basePlatePrice, anchorBoltPrice, angleFitterPrice, normalBoltPrice, serviceCharges, wastagePercent]);
-
+/** ===== Cost summary (uses computed cost) ===== */
+const CostSummary = ({ cost }: { cost: CostData | null }) => {
   if (!cost) {
     return (
       <div className={`${cardClass} p-6 mt-6`}>
@@ -742,10 +717,18 @@ const CostSummary = ({
             Rods (inches): {Number(cost.qty.inchesUsed).toFixed(0)}" × ₹{money(cost.price.rodPerInch)} / inch = ₹
             {money(cost.items.rodsByInches)}
           </div>
-          <div>Base plates: {cost.qty.basePlates} × ₹{money(cost.price.basePlate)} = ₹{money(cost.items.basePlates)}</div>
-          <div>Anchor bolts: {cost.qty.anchorBolts} × ₹{money(cost.price.anchorBolt)} = ₹{money(cost.items.anchorBolts)}</div>
-          <div>Angle fitters: {cost.qty.angleFitters} × ₹{money(cost.price.angleFitter)} = ₹{money(cost.items.angleFitters)}</div>
-          <div>Normal bolts: {cost.qty.normalBolts} × ₹{money(cost.price.normalBolt)} = ₹{money(cost.items.normalBolts)}</div>
+          <div>
+            Base plates: {cost.qty.basePlates} × ₹{money(cost.price.basePlate)} = ₹{money(cost.items.basePlates)}
+          </div>
+          <div>
+            Anchor bolts: {cost.qty.anchorBolts} × ₹{money(cost.price.anchorBolt)} = ₹{money(cost.items.anchorBolts)}
+          </div>
+          <div>
+            Angle fitters: {cost.qty.angleFitters} × ₹{money(cost.price.angleFitter)} = ₹{money(cost.items.angleFitters)}
+          </div>
+          <div>
+            Normal bolts: {cost.qty.normalBolts} × ₹{money(cost.price.normalBolt)} = ₹{money(cost.items.normalBolts)}
+          </div>
         </div>
       </div>
     </div>
@@ -753,7 +736,6 @@ const CostSummary = ({
 };
 
 /** ===== Home (SUPABASE) ===== */
-
 export default function Home() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
@@ -835,9 +817,36 @@ export default function Home() {
     }
   }, [panelModels, selectedPanelModel]);
 
+  // Compute cost ONCE (used by both summary + PDF)
+  const cost: CostData | null = useMemo(() => {
+    return computeCost({
+      results,
+      rodPrice,
+      basePlatePrice,
+      anchorBoltPrice,
+      angleFitterPrice,
+      normalBoltPrice,
+      serviceCharges,
+      wastagePercent,
+    });
+  }, [
+    results,
+    rodPrice,
+    basePlatePrice,
+    anchorBoltPrice,
+    angleFitterPrice,
+    normalBoltPrice,
+    serviceCharges,
+    wastagePercent,
+  ]);
+
   const onSaveProject = async () => {
     if (!projectName.trim()) {
       alert("Enter project name.");
+      return;
+    }
+    if (!results) {
+      alert("Calculate first.");
       return;
     }
 
@@ -916,17 +925,8 @@ export default function Home() {
           normalBoltPrice={normalBoltPrice}
         />
 
-        {/* Cost summary at the bottom, above Save Project */}
-        <CostSummary
-          results={results}
-          rodPrice={rodPrice}
-          basePlatePrice={basePlatePrice}
-          anchorBoltPrice={anchorBoltPrice}
-          angleFitterPrice={angleFitterPrice}
-          normalBoltPrice={normalBoltPrice}
-          serviceCharges={serviceCharges}
-          wastagePercent={wastagePercent}
-        />
+        {/* Cost summary at the bottom, above PDF + Save Project */}
+        <CostSummary cost={cost} />
 
         {/* Save as Project (bottom) */}
         <div className={`${cardClass} p-6 mt-6`}>
@@ -954,6 +954,8 @@ export default function Home() {
           </button>
         </div>
       </div>
+      <EstimationPdfJsPdf cost={cost} projectName={projectName} />
+
     </div>
   );
 }
