@@ -335,7 +335,7 @@ const HardwareTotals = ({
             </div>
 
             <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-              <div className="text-gray-400 text-xs">Angle fitters</div>
+              <div className="text-gray-400 text-xs">Angle finder</div>
               <div className="flex items-baseline justify-between gap-2 mt-1">
                 <div className="text-gray-100 font-semibold text-2xl">{totals.qty.angleAttachers}</div>
                 <div className="text-emerald-300 font-semibold text-sm">₹ {money(totals.cost.angleAttachers)}</div>

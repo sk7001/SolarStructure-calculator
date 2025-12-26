@@ -7,6 +7,19 @@ import type { CostData } from "../lib/costing";
 
 const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
+async function loadAsDataURL(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to load image: ${url}`);
+  const blob = await res.blob();
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read image"));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function EstimationPdfJsPdf({
   cost,
   projectName,
@@ -16,8 +29,10 @@ export default function EstimationPdfJsPdf({
 }) {
   if (!cost) return null;
 
-  const download = () => {
+  const download = async () => {
     const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "p" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 40;
 
     const dateStr = new Date().toLocaleDateString("en-IN", {
       year: "numeric",
@@ -25,19 +40,90 @@ export default function EstimationPdfJsPdf({
       day: "numeric",
     });
 
-    // Header
+    // ===== Header (logo + business details + contact) =====
+    // IMPORTANT: logo must be in /public/talogo.png
+    const logoDataUrl = await loadAsDataURL("/talogo.png");
+
+    const headerTopY = 30;
+    const logoW = 48;
+    const logoH = 48;
+
+    // Logo (top-left)
+    doc.addImage(logoDataUrl, "PNG", margin, headerTopY, logoW, logoH);
+
+    // Left text (after logo)
+    const leftTextX = margin + logoW + 12;
+
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("Solar Structure Cost Estimation", 40, 50);
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("TARUN AGENCIES", leftTextX, headerTopY + 18);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(`Date: ${dateStr}`, 40, 70);
-    if (projectName?.trim()) doc.text(`Project: ${projectName.trim()}`, 40, 85);
+    doc.setTextColor(60);
+    doc.text("Housing board, Rayagada, Odisha, 765001", leftTextX, headerTopY + 34);
 
-    // Table
+    // Right block (top-right)
+    const rightX = pageW - margin;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(0);
+    const name = "Sridhar Kintali";
+    doc.text(name, rightX - doc.getTextWidth(name), headerTopY + 18);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    const phones = "9437033750, 7381033750";
+    doc.text(phones, rightX - doc.getTextWidth(phones), headerTopY + 34);
+
+    const email = "tarunagencies25@gmail.com";
+    const emailY = headerTopY + 48;
+
+    // Email (clickable mailto)
+    doc.setTextColor(0, 0, 255);
+    doc.textWithLink(email, rightX - doc.getTextWidth(email), emailY, {
+      url: `mailto:${email}`,
+    });
+    doc.setTextColor(60);
+
+    // Divider line under header
+    const headerBottomY = headerTopY + logoH + 14;
+    doc.setDrawColor(200);
+    doc.line(margin, headerBottomY, pageW - margin, headerBottomY);
+
+    // ===== Date BELOW the line (top-right) =====
+    const dateLine = `Date: ${dateStr}`;
+    const dateY = headerBottomY + 16;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    doc.text(dateLine, rightX - doc.getTextWidth(dateLine), dateY);
+
+    // ===== Center title (smaller) =====
+    const titleY = headerBottomY + 40;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(0);
+    doc.text("Solar Structure Cost Estimation", pageW / 2, titleY, { align: "center" });
+
+    // Project name under title (center)
+    let contentStartY = titleY + 22;
+    if (projectName?.trim()) {
+      const p = `Project: ${projectName.trim()}`;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(60);
+      doc.text(p, pageW / 2, titleY + 16, { align: "center" });
+      contentStartY = titleY + 32;
+    }
+
+    // ===== Table =====
     autoTable(doc, {
-      startY: 110,
+      startY: contentStartY,
       theme: "grid",
       head: [["Item", "Amount (INR)"]],
       body: [
@@ -47,25 +133,26 @@ export default function EstimationPdfJsPdf({
         ["GRAND TOTAL", `INR ${money(cost.total)}`],
       ],
       styles: { font: "helvetica", fontSize: 11, cellPadding: 6 },
-      headStyles: { fillColor: [17, 24, 39], textColor: 255 }, // dark header
+      headStyles: { fillColor: [17, 24, 39], textColor: 255 },
       didParseCell: (data) => {
-        // Right align amount column
         if (data.column.index === 1) data.cell.styles.halign = "right";
-
-        // Style GRAND TOTAL row (last row)
         if (data.section === "body" && data.row.index === 3) {
           data.cell.styles.fontStyle = "bold";
-          data.cell.styles.fillColor = [220, 252, 231]; // light green
+          data.cell.styles.fillColor = [220, 252, 231];
         }
       },
     });
 
-    const finalY = (doc as any).lastAutoTable?.finalY ?? 110;
+    const finalY = (doc as any).lastAutoTable?.finalY ?? contentStartY;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(100);
-    doc.text("Note: This is an estimation. Final amount may change based on site conditions.", 40, finalY + 25);
+    doc.text(
+      "Note: This is an estimation. Final amount may change based on site conditions.",
+      margin,
+      finalY + 25
+    );
 
     doc.save(`Estimation-${(projectName || "Project").replaceAll(" ", "-")}-${Date.now()}.pdf`);
   };
