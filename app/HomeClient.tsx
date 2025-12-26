@@ -22,6 +22,13 @@ const HARDWARE_PER_STRUCTURE = {
   nuts: 24, // normal bolts
 };
 
+// 1/6th outside => structure supports 5/6th (support size only; panels still occupy full size)
+const SUPPORT_FRACTION = 5 / 6;
+
+// FIXED: For south-facing tilt, rows are along East-West.
+// Row azimuth: 90° means the row direction is E–W line.
+const FIXED_ROW_AZIMUTH_DEG = 90;
+
 /** ===== Calculations ===== */
 const calculatePanelsPerRod = (panelLen: number, rodLength: number = ROD_LENGTH, gap: number = GAP) => {
   let maxPanels = 0;
@@ -106,6 +113,26 @@ const distributePanelsBalanced = (
   return out;
 };
 
+// NEW: roof-optimized distribution (capped panels per structure)
+const distributePanelsCapped = (totalPanels: number, cap: number) => {
+  const N = Math.max(0, Math.floor(totalPanels));
+  const K = Math.max(1, Math.floor(cap));
+
+  const out: { panels: number; count: number }[] = [];
+  let left = N;
+
+  while (left > 0) {
+    const k = Math.min(K, left);
+    const last = out[out.length - 1];
+    if (last && last.panels === k) last.count += 1;
+    else out.push({ panels: k, count: 1 });
+    left -= k;
+  }
+
+  out.sort((a, b) => b.panels - a.panels);
+  return out;
+};
+
 const calculateLegsPerStructure = (
   frontLegHeight: number,
   panelsPerStructure: number,
@@ -181,6 +208,171 @@ const calculateRodsForProject = (
       totalRodsNeeded,
     },
     isUniform: breakdown.length === 1,
+  };
+};
+
+/** ===== Roof fitment (UPDATED: only degrees + roof size) ===== */
+const panelFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
+  return structureFootprintLen(panelsInStructure, panelLen, gap);
+};
+const panelFootprintWid = (panelWid: number) => panelWid;
+
+// structure support footprint (5/6th support)
+const structureSupportFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
+  const supported = panelLen * SUPPORT_FRACTION;
+  if (panelsInStructure <= 0) return 0;
+  return panelsInStructure * supported + (panelsInStructure - 1) * gap;
+};
+const structureSupportFootprintWid = (panelWid: number) => panelWid * SUPPORT_FRACTION;
+
+type RoofRowItem = { panels: number; lenAlong: number; supportLenAlong: number };
+type RoofRow = { usedAlong: number; usedSupportAlong: number; items: RoofRowItem[] };
+
+const normDeg = (deg: number) => {
+  const x = deg % 360;
+  return x < 0 ? x + 360 : x;
+};
+
+const deg2rad = (d: number) => (d * Math.PI) / 180;
+
+/**
+ * Project a rotated rectangle (roof) onto:
+ * - "along" direction (row direction)
+ * - "across" direction (perpendicular to rows)
+ *
+ * roofLenAzimuthDeg = direction of roof LENGTH edge (0=N,90=E,...)
+ * rowAzimuthDeg     = fixed at 90° (E-W)
+ */
+const projectedRoofSpans = (roofL: number, roofW: number, roofLenAzimuthDeg: number, rowAzimuthDeg: number) => {
+  const d = deg2rad(normDeg(rowAzimuthDeg) - normDeg(roofLenAzimuthDeg));
+  const along = Math.abs(roofL * Math.cos(d)) + Math.abs(roofW * Math.sin(d));
+  const across = Math.abs(roofL * Math.sin(d)) + Math.abs(roofW * Math.cos(d));
+  return { along, across };
+};
+
+const maxPanelsThatFitInAlong = (roofAlong: number, panelLen: number, gap: number) => {
+  // Find max k such that k*panelLen + (k-1)*gap <= roofAlong
+  // => k*(panelLen+gap) <= roofAlong + gap
+  const denom = panelLen + gap;
+  if (denom <= 0) return 0;
+  return Math.max(0, Math.floor((roofAlong + gap) / denom));
+};
+
+const suggestRoofFit = ({
+  structures,
+  panelLen,
+  panelWid,
+  roofLength,
+  roofWidth,
+  roofLenAzimuthDeg,
+  gap,
+}: {
+  structures: { panels: number; count: number }[];
+  panelLen: number;
+  panelWid: number;
+  roofLength: number;
+  roofWidth: number;
+  roofLenAzimuthDeg: number;
+  gap: number;
+}) => {
+  if (!roofLength || !roofWidth || roofLength <= 0 || roofWidth <= 0) return null;
+  if (!Number.isFinite(roofLenAzimuthDeg)) return null;
+  if (!structures?.length) return null;
+
+  const rowAzimuthDeg = FIXED_ROW_AZIMUTH_DEG;
+
+  // Usable roof span in the chosen packing axes
+  const { along: roofAlong, across: roofAcross } = projectedRoofSpans(
+    roofLength,
+    roofWidth,
+    roofLenAzimuthDeg,
+    rowAzimuthDeg
+  );
+
+  // Expand structures into individual rectangles (panel footprint)
+  const items: {
+    panels: number;
+    lenAlong: number;
+    widAcross: number;
+    supportLenAlong: number;
+    supportWidAcross: number;
+  }[] = [];
+
+  for (const s of structures) {
+    const lenAlong = panelFootprintLen(s.panels, panelLen, gap);
+    const widAcross = panelFootprintWid(panelWid);
+
+    const supportLenAlong = structureSupportFootprintLen(s.panels, panelLen, gap);
+    const supportWidAcross = structureSupportFootprintWid(panelWid);
+
+    for (let i = 0; i < s.count; i++) {
+      items.push({ panels: s.panels, lenAlong, widAcross, supportLenAlong, supportWidAcross });
+    }
+  }
+
+  // Sort by biggest first (simple packing)
+  items.sort((a, b) => b.lenAlong - a.lenAlong);
+
+  // Shelf/row packing:
+  // Pack along "along" direction in a row, then start new row in "across" direction.
+  const rows: RoofRow[] = [];
+  const rowWidthsAcross: number[] = []; // panel footprint row height (across)
+  const rowSupportWidthsAcross: number[] = []; // support footprint row height (across)
+
+  for (const it of items) {
+    let placed = false;
+
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const needAlong = (row.items.length > 0 ? gap : 0) + it.lenAlong;
+
+      if (row.usedAlong + needAlong <= roofAlong + 1e-9) {
+        row.items.push({ panels: it.panels, lenAlong: it.lenAlong, supportLenAlong: it.supportLenAlong });
+        row.usedAlong += needAlong;
+
+        const needSupportAlong = (row.items.length > 1 ? gap : 0) + it.supportLenAlong;
+        row.usedSupportAlong += needSupportAlong;
+
+        rowWidthsAcross[r] = Math.max(rowWidthsAcross[r] ?? 0, it.widAcross);
+        rowSupportWidthsAcross[r] = Math.max(rowSupportWidthsAcross[r] ?? 0, it.supportWidAcross);
+
+        placed = true;
+        break;
+      }
+    }
+
+    if (!placed) {
+      rows.push({
+        usedAlong: it.lenAlong,
+        usedSupportAlong: it.supportLenAlong,
+        items: [{ panels: it.panels, lenAlong: it.lenAlong, supportLenAlong: it.supportLenAlong }],
+      });
+      rowWidthsAcross.push(it.widAcross);
+      rowSupportWidthsAcross.push(it.supportWidAcross);
+    }
+  }
+
+  const usedAlong = rows.reduce((m, r) => Math.max(m, r.usedAlong), 0);
+  const usedSupportAlong = rows.reduce((m, r) => Math.max(m, r.usedSupportAlong), 0);
+
+  const usedAcross =
+    rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
+
+  const usedSupportAcross =
+    rowSupportWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
+
+  return {
+    roofAlong: Number(roofAlong.toFixed(1)),
+    roofAcross: Number(roofAcross.toFixed(1)),
+    fitsPanels: usedAlong <= roofAlong + 1e-9 && usedAcross <= roofAcross + 1e-9,
+    usedAlong: Number(usedAlong.toFixed(1)),
+    usedAcross: Number(usedAcross.toFixed(1)),
+    usedSupportAlong: Number(usedSupportAlong.toFixed(1)),
+    usedSupportAcross: Number(usedSupportAcross.toFixed(1)),
+    rowsCount: rows.length,
+    rows,
+    roofLenAzimuthDeg: normDeg(roofLenAzimuthDeg),
+    rowAzimuthDeg: FIXED_ROW_AZIMUTH_DEG,
   };
 };
 
@@ -505,6 +697,109 @@ const ResultsTable = ({ results }: { results: any }) => {
   );
 };
 
+/** ===== Roof suggestion UI (UPDATED) ===== */
+const RoofFitCard = ({
+  currentFit,
+  optimized,
+  roofLength,
+  roofWidth,
+  roofLenAzimuthDeg,
+}: {
+  currentFit: ReturnType<typeof suggestRoofFit> | null;
+  optimized: {
+    maxPerStructure: number;
+    maxByRoof: number;
+    structures: { panels: number; count: number }[];
+    fit: ReturnType<typeof suggestRoofFit> | null;
+  } | null;
+  roofLength: string;
+  roofWidth: string;
+  roofLenAzimuthDeg: string;
+}) => {
+  return (
+    <div className={`${cardClass} p-6 mt-6`}>
+      <h2 className="text-xl font-semibold mb-4 text-gray-100">Roof fit suggestion</h2>
+
+      {!roofLength || !roofWidth || roofLenAzimuthDeg === "" ? (
+        <div className="text-gray-400 text-sm">
+          Enter roof length, roof width, and roof long-edge degrees (azimuth).
+        </div>
+      ) : !currentFit ? (
+        <div className="text-gray-400 text-sm">Calculate first to see roof fitment.</div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4 mb-4">
+            <div className="text-gray-200 text-sm space-y-1">
+              <div>
+                Roof input (L×W): {Number(roofLength)}" × {Number(roofWidth)}"
+              </div>
+              <div>Roof long-edge azimuth: {normDeg(Number(roofLenAzimuthDeg))}°</div>
+              <div>Row direction: fixed {FIXED_ROW_AZIMUTH_DEG}° (East–West rows)</div>
+              <div>
+                Roof projected (Along × Across): {currentFit.roofAlong}" × {currentFit.roofAcross}"
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={`p-4 rounded-xl border mb-4 ${
+              currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+            }`}
+          >
+            <div className="text-gray-100 font-semibold mb-2">
+              Current structure layout: {currentFit.fitsPanels ? "Fits" : "Does NOT fit"}
+            </div>
+            <div className="text-gray-200 text-sm space-y-1">
+              <div>
+                Needed by panels (Along × Across): {currentFit.usedAlong}" × {currentFit.usedAcross}"
+              </div>
+              <div>
+                Needed by support (Along × Across): {currentFit.usedSupportAlong}" × {currentFit.usedSupportAcross}"
+              </div>
+              <div>Rows needed (stacked Across): {currentFit.rowsCount}</div>
+            </div>
+          </div>
+
+          <div
+            className={`p-4 rounded-xl border ${
+              optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+            }`}
+          >
+            <div className="text-gray-100 font-semibold mb-2">Roof-optimized suggestion</div>
+
+            {!optimized ? (
+              <div className="text-gray-400 text-sm">Enter panel count and calculate.</div>
+            ) : (
+              <div className="text-gray-200 text-sm space-y-1">
+                <div>
+                  Max panels per structure (roof limit): {optimized.maxByRoof} | Final cap (roof+rod):{" "}
+                  {optimized.maxPerStructure}
+                </div>
+                <div>
+                  Suggested structures: {optimized.structures.map((s) => `${s.count}x${s.panels}`).join(" + ")}
+                </div>
+
+                {!optimized.fit ? (
+                  <div>Fit details: (not available)</div>
+                ) : (
+                  <>
+                    <div>
+                      Fit result: {optimized.fit.fitsPanels ? "Fits" : "Does NOT fit"} | Rows: {optimized.fit.rowsCount}
+                    </div>
+                    <div>
+                      Needed by panels (Along × Across): {optimized.fit.usedAlong}" × {optimized.fit.usedAcross}"
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 /** ===== Form (Prices ABOVE Calculate) ===== */
 const InputForm = ({
   panelModels,
@@ -517,6 +812,13 @@ const InputForm = ({
   setSelectedPanelModel,
   isVertical,
   setIsVertical,
+
+  roofLength,
+  setRoofLength,
+  roofWidth,
+  setRoofWidth,
+  roofLenAzimuthDeg,
+  setRoofLenAzimuthDeg,
 
   rodPrice,
   setRodPrice,
@@ -547,6 +849,15 @@ const InputForm = ({
 
   isVertical: boolean;
   setIsVertical: (v: boolean) => void;
+
+  roofLength: string;
+  setRoofLength: (v: string) => void;
+
+  roofWidth: string;
+  setRoofWidth: (v: string) => void;
+
+  roofLenAzimuthDeg: string;
+  setRoofLenAzimuthDeg: (v: string) => void;
 
   rodPrice: string;
   setRodPrice: (v: string) => void;
@@ -597,7 +908,7 @@ const InputForm = ({
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
     if (maxPanelsPerRod <= 0) {
-      alert("Panel length too large to fit on a 164-inch rod with gap.");
+      alert('Panel length too large to fit on a 164-inch rod with gap.');
       return;
     }
 
@@ -632,6 +943,48 @@ const InputForm = ({
           onChange={(e) => setNumberOfPanels(e.target.value)}
           className={fieldClass}
         />
+      </div>
+
+      {/* Roof inputs (optional, ONLY degrees + size) */}
+      <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4 mb-6">
+        <div className="text-gray-100 font-semibold mb-3">Roof details (optional)</div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-gray-300 mb-2">Roof length (in inches)</label>
+            <input
+              type="number"
+              value={roofLength}
+              onChange={(e) => setRoofLength(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Roof width (in inches)</label>
+            <input
+              type="number"
+              value={roofWidth}
+              onChange={(e) => setRoofWidth(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-gray-300 mb-2">Roof long-edge azimuth (degrees)</label>
+            <input
+              type="number"
+              value={roofLenAzimuthDeg}
+              onChange={(e) => setRoofLenAzimuthDeg(e.target.value)}
+              className={fieldClass}
+              placeholder="Example: 45 (NE), 315 (NW), 90 (E), 0 (N)"
+            />
+          </div>
+
+          <div className="sm:col-span-2 text-gray-400 text-sm">
+            Panels should face South and be tilted 19° towards South (Rayagada setup). Rows assumed East–West.
+          </div>
+        </div>
       </div>
 
       <div className="mb-4">
@@ -815,6 +1168,11 @@ export default function HomeClient() {
   const [selectedPanelModel, setSelectedPanelModel] = useState("");
   const [isVertical, setIsVertical] = useState(false);
 
+  // Roof inputs (ONLY size + degrees)
+  const [roofLength, setRoofLength] = useState("");
+  const [roofWidth, setRoofWidth] = useState("");
+  const [roofLenAzimuthDeg, setRoofLenAzimuthDeg] = useState("");
+
   // Prices (defaults)
   const [rodPrice, setRodPrice] = useState("1000");
   const [basePlatePrice, setBasePlatePrice] = useState("150");
@@ -906,6 +1264,74 @@ export default function HomeClient() {
     wastagePercent,
   ]);
 
+  // Roof fit (current results.structures) - does not modify results
+  const currentRoofFit = useMemo(() => {
+    if (!results) return null;
+    if (!roofLength || !roofWidth || roofLenAzimuthDeg === "") return null;
+
+    const model = panelModels.find((m) => m.name === selectedPanelModel);
+    if (!model) return null;
+
+    const longSide = Math.max(Number(model.width), Number(model.height));
+    const shortSide = Math.min(Number(model.width), Number(model.height));
+
+    const panelLen = isVertical ? longSide : shortSide;
+    const panelWid = isVertical ? shortSide : longSide;
+
+    const roofAz = Number(roofLenAzimuthDeg);
+    if (!Number.isFinite(roofAz)) return null;
+
+    return suggestRoofFit({
+      structures: results.structures,
+      panelLen,
+      panelWid,
+      roofLength: Number(roofLength),
+      roofWidth: Number(roofWidth),
+      roofLenAzimuthDeg: roofAz,
+      gap: GAP,
+    });
+  }, [results, roofLength, roofWidth, roofLenAzimuthDeg, panelModels, selectedPanelModel, isVertical]);
+
+  // Roof-optimized suggestion (cap max panels per structure by roof projected "along")
+  const roofOptimized = useMemo(() => {
+    if (!results) return null;
+    if (!roofLength || !roofWidth || roofLenAzimuthDeg === "") return null;
+
+    const model = panelModels.find((m) => m.name === selectedPanelModel);
+    if (!model) return null;
+
+    const longSide = Math.max(Number(model.width), Number(model.height));
+    const shortSide = Math.min(Number(model.width), Number(model.height));
+
+    const panelLen = isVertical ? longSide : shortSide;
+    const panelWid = isVertical ? shortSide : longSide;
+
+    const roofAz = Number(roofLenAzimuthDeg);
+    if (!Number.isFinite(roofAz)) return null;
+
+    const { along: roofAlong } = projectedRoofSpans(Number(roofLength), Number(roofWidth), roofAz, FIXED_ROW_AZIMUTH_DEG);
+
+    const maxByRoof = maxPanelsThatFitInAlong(roofAlong, panelLen, GAP);
+    const maxPerStructure = Math.max(1, Math.min(results.maxPanelsPerRod, maxByRoof));
+
+    const totalPanels = parseInt(numberOfPanels || "0", 10);
+    if (!Number.isFinite(totalPanels) || totalPanels <= 0) return null;
+
+    const structures = distributePanelsCapped(totalPanels, maxPerStructure);
+
+    const fit = suggestRoofFit({
+      structures,
+      panelLen,
+      panelWid,
+      roofLength: Number(roofLength),
+      roofWidth: Number(roofWidth),
+      roofLenAzimuthDeg: roofAz,
+      gap: GAP,
+    });
+
+    return { maxPerStructure, maxByRoof, structures, fit };
+  }, [results, roofLength, roofWidth, roofLenAzimuthDeg, panelModels, selectedPanelModel, isVertical, numberOfPanels]);
+
   const onSaveProject = async () => {
     if (!projectName.trim()) {
       alert("Enter project name.");
@@ -933,6 +1359,7 @@ export default function HomeClient() {
             serviceCharges,
             wastagePercent,
           },
+          // Still not saving roof fields (keeps your existing schema unchanged).
         },
         results,
       });
@@ -963,6 +1390,12 @@ export default function HomeClient() {
             setSelectedPanelModel={setSelectedPanelModel}
             isVertical={isVertical}
             setIsVertical={setIsVertical}
+            roofLength={roofLength}
+            setRoofLength={setRoofLength}
+            roofWidth={roofWidth}
+            setRoofWidth={setRoofWidth}
+            roofLenAzimuthDeg={roofLenAzimuthDeg}
+            setRoofLenAzimuthDeg={setRoofLenAzimuthDeg}
             rodPrice={rodPrice}
             setRodPrice={setRodPrice}
             basePlatePrice={basePlatePrice}
@@ -981,6 +1414,15 @@ export default function HomeClient() {
         )}
 
         <ResultsTable results={results} />
+
+        <RoofFitCard
+          currentFit={currentRoofFit}
+          optimized={roofOptimized}
+          roofLength={roofLength}
+          roofWidth={roofWidth}
+          roofLenAzimuthDeg={roofLenAzimuthDeg}
+        />
+
         <RodCuttingSuggestions results={results} />
 
         <HardwareTotals
