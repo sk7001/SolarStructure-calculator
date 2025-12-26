@@ -67,13 +67,7 @@ export default function PanelsPage() {
     <div className="bg-gray-950 min-h-screen text-gray-100">
       <div className="max-w-4xl mx-auto p-6">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold">Panel Models</h1>
-          <Link
-            href="/"
-            className="rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors px-4 py-2 border border-gray-700"
-          >
-            Back
-          </Link>
+          <h1 className="text-2xl font-bold">List of panels</h1>
         </div>
 
         <div className={`${cardClass} p-6 mt-6`}>

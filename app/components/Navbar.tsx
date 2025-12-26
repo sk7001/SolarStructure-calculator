@@ -2,8 +2,18 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabaseClient"; // adjust path if needed
 
-const DrawerMenu = ({ onClose }: { onClose: () => void }) => {
+const DrawerMenu = ({
+  onClose,
+  onLogout,
+  logoutLoading,
+}: {
+  onClose: () => void;
+  onLogout: () => void;
+  logoutLoading: boolean;
+}) => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -73,6 +83,17 @@ const DrawerMenu = ({ onClose }: { onClose: () => void }) => {
             <div className="text-gray-100 font-semibold">Old Inventory (Usable Pieces)</div>
             <div className="text-gray-400 text-sm mt-1">Save and view leftover usable pieces</div>
           </Link>
+
+          {/* Logout button */}
+          <button
+            type="button"
+            onClick={onLogout}
+            disabled={logoutLoading}
+            className="w-full text-left rounded-xl border border-red-900/40 bg-red-900/10 hover:bg-red-900/20 transition-colors p-4 disabled:opacity-60"
+          >
+            <div className="text-red-200 font-semibold">{logoutLoading ? "Logging out..." : "Logout"}</div>
+            <div className="text-red-200/70 text-sm mt-1">Sign out from your account</div>
+          </button>
         </div>
       </aside>
     </div>
@@ -81,6 +102,24 @@ const DrawerMenu = ({ onClose }: { onClose: () => void }) => {
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+  const router = useRouter();
+
+  const onLogout = async () => {
+    try {
+      setLogoutLoading(true);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      setOpen(false);
+      router.push("/"); // change to "/login" if you have a login page
+      router.refresh();
+    } catch (e: any) {
+      alert(e?.message || "Logout failed");
+    } finally {
+      setLogoutLoading(false);
+    }
+  };
 
   return (
     <nav className="bg-gray-950 text-gray-100 p-4 flex items-center justify-between sticky top-0 z-30 border-b border-gray-800">
@@ -98,7 +137,13 @@ export default function Navbar() {
       <h1 className="text-lg sm:text-xl font-bold tracking-wide">Solar Structure Cost Calculator</h1>
       <div className="w-10" />
 
-      {open && <DrawerMenu onClose={() => setOpen(false)} />}
+      {open && (
+        <DrawerMenu
+          onClose={() => setOpen(false)}
+          onLogout={onLogout}
+          logoutLoading={logoutLoading}
+        />
+      )}
     </nav>
   );
 }

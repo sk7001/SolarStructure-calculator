@@ -98,12 +98,6 @@ export default function PiecesPage() {
       <div className="max-w-4xl mx-auto p-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">Usable Pieces (Inventory)</h1>
-          <Link
-            href="/"
-            className="rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors px-4 py-2 border border-gray-700"
-          >
-            Back
-          </Link>
         </div>
 
         <div className={`${cardClass} p-6 mt-6`}>
