@@ -5,7 +5,8 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { CostData } from "../lib/costing";
 
-const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const money = (n: number) =>
+  n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 async function loadAsDataURL(url: string): Promise<string> {
   const res = await fetch(url);
@@ -22,10 +23,9 @@ async function loadAsDataURL(url: string): Promise<string> {
 
 export default function EstimationPdfJsPdf({
   cost,
-  projectName,
 }: {
   cost: CostData | null;
-  projectName: string;
+  projectName: string; // kept in props type but unused
 }) {
   if (!cost) return null;
 
@@ -40,15 +40,17 @@ export default function EstimationPdfJsPdf({
       day: "numeric",
     });
 
-    // ===== Header =====
+    // ===== Header (logo + business details + contact) =====
     const logoDataUrl = await loadAsDataURL("/talogo.png");
 
     const headerTopY = 30;
     const logoW = 48;
     const logoH = 48;
 
+    // Logo (top-left)
     doc.addImage(logoDataUrl, "PNG", margin, headerTopY, logoW, logoH);
 
+    // Left text (after logo)
     const leftTextX = margin + logoW + 12;
 
     doc.setFont("helvetica", "bold");
@@ -59,8 +61,13 @@ export default function EstimationPdfJsPdf({
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(60);
-    doc.text("Housing board, Rayagada, Odisha, 765001", leftTextX, headerTopY + 34);
+    doc.text(
+      "Housing board, Rayagada, Odisha, 765001",
+      leftTextX,
+      headerTopY + 34
+    );
 
+    // Right block (top-right)
     const rightX = pageW - margin;
 
     doc.setFont("helvetica", "bold");
@@ -78,14 +85,19 @@ export default function EstimationPdfJsPdf({
     const email = "tarunagencies25@gmail.com";
     const emailY = headerTopY + 48;
 
+    // Email (clickable mailto)
     doc.setTextColor(0, 0, 255);
-    doc.textWithLink(email, rightX - doc.getTextWidth(email), emailY, { url: `mailto:${email}` });
+    doc.textWithLink(email, rightX - doc.getTextWidth(email), emailY, {
+      url: `mailto:${email}`,
+    });
     doc.setTextColor(60);
 
+    // Divider line under header
     const headerBottomY = headerTopY + logoH + 14;
     doc.setDrawColor(200);
     doc.line(margin, headerBottomY, pageW - margin, headerBottomY);
 
+    // ===== Date BELOW the line (top-right) =====
     const dateLine = `Date: ${dateStr}`;
     const dateY = headerBottomY + 16;
 
@@ -94,52 +106,42 @@ export default function EstimationPdfJsPdf({
     doc.setTextColor(60);
     doc.text(dateLine, rightX - doc.getTextWidth(dateLine), dateY);
 
+    // ===== Center title =====
     const titleY = headerBottomY + 40;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
     doc.setTextColor(0);
-    doc.text("Solar Structure Cost Estimation", pageW / 2, titleY, { align: "center" });
+    doc.text("Solar Structure Cost Estimation", pageW / 2, titleY, {
+      align: "center",
+    });
 
-    let contentStartY = titleY + 22;
-    if (projectName?.trim()) {
-      const p = `Project: ${projectName.trim()}`;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(60);
-      doc.text(p, pageW / 2, titleY + 16, { align: "center" });
-      contentStartY = titleY + 32;
-    }
+    // Start content directly after title (no project name)
+    const contentStartY = titleY + 28;
 
-    // ===== Wastage baked into Rod per-inch =====
-    const pct = Number(cost.price.wastagePct) || 0;
-    const factor = 1 + pct / 100;
-
+    // ===== Wastage baked into rod per-inch =====
+    const wastagePct = Number(cost.price.wastagePct) || 0;
+    const factor = 1 + wastagePct / 100;
     const effectiveRodPerInch = cost.price.rodPerInch * factor;
-    const rodTotal = cost.qty.inchesUsed * effectiveRodPerInch;
+    const rodTotalWithWastage = cost.qty.inchesUsed * effectiveRodPerInch;
 
-    // Recompute material subtotal so table totals match (no separate wastage row)
+    // Recompute material subtotal for PDF (visual only)
     const materialSubtotal =
-      rodTotal +
+      rodTotalWithWastage +
       cost.items.basePlates +
       cost.items.anchorBolts +
       cost.items.angleFitters +
+      (cost.items as any).uClamps +
       cost.items.normalBolts;
-
-    // Recompute grand total for PDF
-    const grandTotal =
-      materialSubtotal +
-      cost.price.service +
-      (cost.price.installation ?? 0);
 
     const breakdownRows: any[] = [
       [
-        "  Rod (GI)",
+        "  GI 42 X 42 X 2mm slotted channels",
         `${cost.qty.inchesUsed.toFixed(2)} in`,
         `INR ${money(effectiveRodPerInch)}/in`,
-        `INR ${money(rodTotal)}`,
+        `INR ${money(rodTotalWithWastage)}`,
       ],
       [
-        "  Base Plates",
+        "  Base Plate",
         `${cost.qty.basePlates} units`,
         `INR ${money(cost.price.basePlate)}/unit`,
         `INR ${money(cost.items.basePlates)}`,
@@ -151,13 +153,19 @@ export default function EstimationPdfJsPdf({
         `INR ${money(cost.items.anchorBolts)}`,
       ],
       [
-        "  Angle Finders",
+        "  Angle Finder",
         `${cost.qty.angleFitters} units`,
         `INR ${money(cost.price.angleFitter)}/unit`,
         `INR ${money(cost.items.angleFitters)}`,
       ],
       [
-        "  Nuts (Normal bolts)",
+        "  GI U-Clamp",
+        `${(cost.qty as any).uClamps ?? 0} units`,
+        `INR ${money((cost.price as any).uClamp ?? 0)}/unit`,
+        `INR ${money((cost.items as any).uClamps ?? 0)}`,
+      ],
+      [
+        "  Nuts and bolts",
         `${cost.qty.normalBolts} units`,
         `INR ${money(cost.price.normalBolt)}/unit`,
         `INR ${money(cost.items.normalBolts)}`,
@@ -168,8 +176,13 @@ export default function EstimationPdfJsPdf({
       ["Materials", "", "", `INR ${money(materialSubtotal)}`],
       ...breakdownRows,
       ["Fabrication charges", "", "", `INR ${money(cost.price.service)}`],
-      ["Installation charges", "", "", `INR ${money(cost.price.installation ?? 0)}`],
-      ["GRAND TOTAL", "", "", `INR ${money(grandTotal)}`],
+      [
+        "Installation charges",
+        "",
+        "",
+        `INR ${money(cost.price.installation ?? 0)}`,
+      ],
+      ["GRAND TOTAL", "", "", `INR ${money(cost.total)}`],
     ];
 
     autoTable(doc, {
@@ -178,14 +191,21 @@ export default function EstimationPdfJsPdf({
       head: [["Item", "Quantity", "Price/Unit", "Total (INR)"]],
       body: mainBody,
       styles: { font: "helvetica", fontSize: 10, cellPadding: 6 },
-      headStyles: { fillColor: [17, 24, 39], textColor: 255, fontStyle: "bold" },
+      headStyles: { fillColor: [41, 41, 41], textColor: 255, fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 180 },
+      },
       didParseCell: (data) => {
         if (data.column.index === 0) data.cell.styles.halign = "left";
         if (data.column.index >= 1) data.cell.styles.halign = "right";
 
         if (data.section === "body") {
           const label = String((data.row.raw as any[])[0] ?? "").trim();
-          if (["Materials", "Fabrication charges", "Installation charges", "GRAND TOTAL"].includes(label)) {
+          if (
+            ["Materials", "Fabrication charges", "Installation charges", "GRAND TOTAL"].includes(
+              label
+            )
+          ) {
             data.cell.styles.fontStyle = "bold";
           }
           if (label === "GRAND TOTAL") {
@@ -199,10 +219,14 @@ export default function EstimationPdfJsPdf({
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(100);
-    doc.text("Note: This is an estimation. Final amount may change based on site conditions.", margin, finalY + 25);
+    doc.setTextColor(120);
+    doc.text(
+      "Note: This is an estimation. Final amount may change based on site conditions.",
+      margin,
+      finalY + 24
+    );
 
-    doc.save(`Estimation-${(projectName || "Project").replaceAll(" ", "-")}-${Date.now()}.pdf`);
+    doc.save(`Estimation-Project-${Date.now()}.pdf`);
   };
 
   return (
