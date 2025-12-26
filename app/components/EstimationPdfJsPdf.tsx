@@ -151,7 +151,7 @@ export default function EstimationPdfJsPdf({
         `INR ${money(cost.items.anchorBolts)}`,
       ],
       [
-        "  Angle Fitters",
+        "  Angle Finders",
         `${cost.qty.angleFitters} units`,
         `INR ${money(cost.price.angleFitter)}/unit`,
         `INR ${money(cost.items.angleFitters)}`,

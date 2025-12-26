@@ -1045,7 +1045,7 @@ const InputForm = ({
           </div>
 
           <div>
-            <label className="block text-gray-300 mb-2">Angle fitter price</label>
+            <label className="block text-gray-300 mb-2">Angle finder price</label>
             <input
               type="number"
               value={angleFitterPrice}
@@ -1163,7 +1163,7 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
             Anchor bolts: {cost.qty.anchorBolts} × ₹{money(cost.price.anchorBolt)} = ₹{money(cost.items.anchorBolts)}
           </div>
           <div>
-            Angle fitters: {cost.qty.angleFitters} × ₹{money(cost.price.angleFitter)} = ₹{money(cost.items.angleFitters)}
+            Angle finder: {cost.qty.angleFitters} × ₹{money(cost.price.angleFitter)} = ₹{money(cost.items.angleFitters)}
           </div>
           <div>
             Normal bolts: {cost.qty.normalBolts} × ₹{money(cost.price.normalBolt)} = ₹{money(cost.items.normalBolts)}
