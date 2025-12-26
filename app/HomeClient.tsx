@@ -9,31 +9,21 @@ import { createProject, getProjectById, updateProject } from "./lib/projectsDb";
 
 import { computeCost, type CostData } from "./lib/costing";
 import EstimationPdfJsPdf from "./components/EstimationPdfJsPdf";
-import StructureSlipPdf from "./components/structureSlipPdf"; // NEW
+import StructureSlipPdf from "./components/structureSlipPdf";
 
 const ROD_LENGTH = 164;
-
-// UPDATED: was 5, now 3. Treat as tolerance/error, not physical gap.
 const GAP = 3;
-
 const TILT_ANGLE = 19;
 
-// Hardware per structure
 const HARDWARE_PER_STRUCTURE = {
   basePlates: 4,
   anchorBolts: 16,
   angleAttachers: 4,
-  nuts: 24, // normal bolts
-
-  // NEW (this is NOT "per structure", but kept here as your default config)
+  nuts: 24,
   uClampsPerPanel: 4,
 };
 
-// 1/6th outside => structure supports 5/6th (support size only; panels still occupy full size)
 const SUPPORT_FRACTION = 5 / 6;
-
-// FIXED: For south-facing tilt, rows are along East-West.
-// Row azimuth: 90° means the row direction is E–W line.
 const FIXED_ROW_AZIMUTH_DEG = 90;
 
 /** ===== Calculations ===== */
@@ -45,20 +35,11 @@ const calculatePanelsPerRod = (panelLen: number, rodLength: number = ROD_LENGTH,
   return maxPanels - 1;
 };
 
-/**
- * Structure footprint length along the rod direction (inches)
- * NOTE: this includes GAP (tolerance). This is used for planning/fitment.
- */
 const structureFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
   if (panelsInStructure <= 0) return 0;
   return panelsInStructure * panelLen + (panelsInStructure - 1) * gap;
 };
 
-/**
- * Balanced distribution:
- * prefers more "square-ish" structures (length ~ width) rather than one long structure,
- * while respecting maxPanelsPerRod.
- */
 const distributePanelsBalanced = (
   totalPanels: number,
   maxPanelsPerRod: number,
@@ -111,7 +92,6 @@ const distributePanelsBalanced = (
   return out;
 };
 
-// roof-optimized distribution (capped panels per structure)
 const distributePanelsCapped = (totalPanels: number, cap: number) => {
   const N = Math.max(0, Math.floor(totalPanels));
   const K = Math.max(1, Math.floor(cap));
@@ -210,12 +190,10 @@ const calculateRodsForProject = (
 };
 
 /** ===== Roof fitment ===== */
-const panelFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
-  return structureFootprintLen(panelsInStructure, panelLen, gap);
-};
+const panelFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) =>
+  structureFootprintLen(panelsInStructure, panelLen, gap);
 const panelFootprintWid = (panelWid: number) => panelWid;
 
-// structure support footprint (5/6th support)
 const structureSupportFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
   const supported = panelLen * SUPPORT_FRACTION;
   if (panelsInStructure <= 0) return 0;
@@ -268,12 +246,7 @@ const suggestRoofFit = ({
   if (!structures?.length) return null;
 
   const rowAzimuthDeg = FIXED_ROW_AZIMUTH_DEG;
-  const { along: roofAlong, across: roofAcross } = projectedRoofSpans(
-    roofLength,
-    roofWidth,
-    roofLenAzimuthDeg,
-    rowAzimuthDeg
-  );
+  const { along: roofAlong, across: roofAcross } = projectedRoofSpans(roofLength, roofWidth, roofLenAzimuthDeg, rowAzimuthDeg);
 
   const items: {
     panels: number;
@@ -337,8 +310,7 @@ const suggestRoofFit = ({
   const usedAlong = rows.reduce((m, r) => Math.max(m, r.usedAlong), 0);
   const usedSupportAlong = rows.reduce((m, r) => Math.max(m, r.usedSupportAlong), 0);
 
-  const usedAcross =
-    rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
+  const usedAcross = rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
 
   const usedSupportAcross =
     rowSupportWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
@@ -362,9 +334,7 @@ const suggestRoofFit = ({
 const fieldClass =
   "w-full h-14 rounded-lg bg-gray-800 text-gray-100 border border-gray-700 px-4 " +
   "text-base outline-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30";
-
 const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
-
 const money = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 /** ===== Cutting plan ===== */
@@ -411,9 +381,7 @@ const summarizePatterns = (rods: RodPlan[]) => {
     else map.set(sig, { count: prev.count + 1, exampleWaste: prev.exampleWaste });
   }
 
-  return [...map.entries()]
-    .map(([pattern, meta]) => ({ pattern, ...meta }))
-    .sort((a, b) => b.count - a.count);
+  return [...map.entries()].map(([pattern, meta]) => ({ pattern, ...meta })).sort((a, b) => b.count - a.count);
 };
 
 const RodCuttingSuggestions = ({ results }: { results: any }) => {
@@ -448,7 +416,6 @@ const RodCuttingSuggestions = ({ results }: { results: any }) => {
   return (
     <div className={`${cardClass} p-6 mt-6`}>
       <h2 className="text-xl font-semibold mb-4 text-gray-100">Rod cutting plan</h2>
-
       {!cutData ? (
         <div className="text-gray-400 text-sm">Calculate first to see suggestions.</div>
       ) : (
@@ -533,8 +500,6 @@ const HardwareTotals = ({
       anchorBolts: totalStructures * HARDWARE_PER_STRUCTURE.anchorBolts,
       angleAttachers: totalStructures * HARDWARE_PER_STRUCTURE.angleAttachers,
       nuts: totalStructures * HARDWARE_PER_STRUCTURE.nuts,
-
-      // NEW: based on panels
       uClamps: totalPanels * perPanel,
     };
 
@@ -616,16 +581,8 @@ const HardwareTotals = ({
   );
 };
 
-/** ===== Results (UPDATED: per-structure footprint) ===== */
-const ResultsTable = ({
-  results,
-  panelLen,
-  panelWid,
-}: {
-  results: any;
-  panelLen: number;
-  panelWid: number;
-}) => {
+/** ===== Results ===== */
+const ResultsTable = ({ results, panelLen, panelWid }: { results: any; panelLen: number; panelWid: number }) => {
   if (!results) return null;
 
   const { maxPanelsPerRod, structures, rods } = results;
@@ -633,7 +590,6 @@ const ResultsTable = ({
   const shrink = 2 / 3;
   const tiltRad = (TILT_ANGLE * Math.PI) / 180;
 
-  // Structure-to-structure footprint (NO GAP included)
   const footprintTextForPanels = (panelsInStructure: number) => {
     if (!Number.isFinite(panelLen) || !Number.isFinite(panelWid) || panelLen <= 0 || panelWid <= 0) return "-";
 
@@ -647,16 +603,10 @@ const ResultsTable = ({
     <div className={`${cardClass} p-6 mt-6`}>
       <h2 className="text-xl font-semibold mb-4 text-gray-100">Results</h2>
 
-      <div
-        className={`p-4 rounded-xl mb-6 border ${
-          rods.isUniform ? "bg-green-900/20 border-green-800" : "bg-yellow-900/20 border-yellow-800"
-        }`}
-      >
+      <div className={`p-4 rounded-xl mb-6 border ${rods.isUniform ? "bg-green-900/20 border-green-800" : "bg-yellow-900/20 border-yellow-800"}`}>
         <div className="font-semibold mb-1">{rods.isUniform ? "Uniform structures" : "Mixed structures"}</div>
         <div className="text-gray-200">
-          {structures
-            .map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`)
-            .join("")}
+          {structures.map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`).join("")}
         </div>
       </div>
 
@@ -692,23 +642,17 @@ const ResultsTable = ({
 
               <tr>
                 <td className="border-b border-gray-800 p-2">Front legs</td>
-                <td className="border-b border-gray-800 p-2">
-                  {b.frontLegsCount} × {b.legs.frontLegHeight}"
-                </td>
+                <td className="border-b border-gray-800 p-2">{b.frontLegsCount} × {b.legs.frontLegHeight}"</td>
               </tr>
 
               <tr>
                 <td className="border-b border-gray-800 p-2">Rear legs</td>
-                <td className="border-b border-gray-800 p-2">
-                  {b.rearLegsCount} × {b.legs.rearLegHeight}"
-                </td>
+                <td className="border-b border-gray-800 p-2">{b.rearLegsCount} × {b.legs.rearLegHeight}"</td>
               </tr>
 
               <tr className="bg-blue-900/20">
                 <td className="border-b border-gray-800 p-2 font-semibold">Hypotenuse rods (GI)</td>
-                <td className="border-b border-gray-800 p-2 font-semibold">
-                  {b.hypoRodsCount} × {b.legs.hypotenuseRodLength}"
-                </td>
+                <td className="border-b border-gray-800 p-2 font-semibold">{b.hypoRodsCount} × {b.legs.hypotenuseRodLength}"</td>
               </tr>
             </React.Fragment>
           ))}
@@ -773,13 +717,10 @@ const RoofFitCard = ({
           </div>
 
           <div
-            className={`p-4 rounded-xl border mb-4 ${
-              currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
-            }`}
+            className={`p-4 rounded-xl border mb-4 ${currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+              }`}
           >
-            <div className="text-gray-100 font-semibold mb-2">
-              Current structure layout: {currentFit.fitsPanels ? "Fits" : "Does NOT fit"}
-            </div>
+            <div className="text-gray-100 font-semibold mb-2">Current structure layout: {currentFit.fitsPanels ? "Fits" : "Does NOT fit"}</div>
 
             <div className="text-gray-200 text-sm space-y-1">
               <div>
@@ -793,9 +734,8 @@ const RoofFitCard = ({
           </div>
 
           <div
-            className={`p-4 rounded-xl border ${
-              optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
-            }`}
+            className={`p-4 rounded-xl border ${optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+              }`}
           >
             <div className="text-gray-100 font-semibold mb-2">Roof-optimized suggestion</div>
 
@@ -837,13 +777,15 @@ const toNumSafe = (v: string, fallback = 0) => {
 
 const totalPanelsFromResults = (results: any) => {
   if (!results?.structures?.length) return 0;
-  return results.structures.reduce(
-    (sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0),
-    0
-  );
+  return results.structures.reduce((sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0), 0);
 };
 
-const extendCostWithUClamps = (base: CostData | null, results: any, uClampPriceStr: string, uClampsPerPanelStr: string): CostData | null => {
+const extendCostWithUClamps = (
+  base: CostData | null,
+  results: any,
+  uClampPriceStr: string,
+  uClampsPerPanelStr: string
+): CostData | null => {
   if (!base) return null;
 
   const panels = totalPanelsFromResults(results);
@@ -852,7 +794,6 @@ const extendCostWithUClamps = (base: CostData | null, results: any, uClampPriceS
     uClampsPerPanelStr === "" ? HARDWARE_PER_STRUCTURE.uClampsPerPanel : Math.max(0, Math.floor(toNumSafe(uClampsPerPanelStr, 0)));
 
   const qtyUClamps = panels * perPanel;
-
   const unitPrice = toNumSafe(uClampPriceStr, 0);
   const uClampsCost = qtyUClamps * unitPrice;
 
@@ -883,6 +824,8 @@ const extendCostWithUClamps = (base: CostData | null, results: any, uClampPriceS
 const InputForm = ({
   panelModels,
   onCalculate,
+  disabled,
+
   frontLegHeight,
   setFrontLegHeight,
   numberOfPanels,
@@ -924,6 +867,7 @@ const InputForm = ({
 }: {
   panelModels: PanelRow[];
   onCalculate: (res: any) => void;
+  disabled: boolean;
 
   frontLegHeight: string;
   setFrontLegHeight: (v: string) => void;
@@ -983,6 +927,8 @@ const InputForm = ({
   }, [panelModels, selectedPanelModel, setSelectedPanelModel]);
 
   const handleCalculate = () => {
+    if (disabled) return;
+
     if (!frontLegHeight || !numberOfPanels || !selectedPanelModel) {
       alert("Please fill in all fields.");
       return;
@@ -997,8 +943,8 @@ const InputForm = ({
     const longSide = Math.max(Number(selectedModel.width), Number(selectedModel.height));
     const shortSide = Math.min(Number(selectedModel.width), Number(selectedModel.height));
 
-    const panelLen = isVertical ? longSide : shortSide; // along the rod
-    const panelWid = isVertical ? shortSide : longSide; // across the structure
+    const panelLen = isVertical ? longSide : shortSide;
+    const panelWid = isVertical ? shortSide : longSide;
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
     if (maxPanelsPerRod <= 0) {
@@ -1015,134 +961,250 @@ const InputForm = ({
     onCalculate({ maxPanelsPerRod, structures, rods });
   };
 
+  const disabledClass = disabled ? "opacity-60 pointer-events-none" : "";
+
+  const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+      <div className="text-gray-100 font-semibold mb-3">{title}</div>
+      {children}
+    </div>
+  );
+
   return (
     <div className={`${cardClass} p-6`}>
-      <h2 className="text-xl font-semibold mb-4 text-gray-100">Input Form</h2>
-
-      <div className="mb-4">
-        <label className="block text-gray-300 mb-2">Front Leg Height (in inches)</label>
-        <input type="number" value={frontLegHeight} onChange={(e) => setFrontLegHeight(e.target.value)} className={fieldClass} />
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-gray-100">Input requirements</h2>
+        {disabled && <div className="text-xs text-gray-400">View mode</div>}
       </div>
 
-      <div className="mb-4">
-        <label className="block text-gray-300 mb-2">Number of Panels</label>
-        <input type="number" value={numberOfPanels} onChange={(e) => setNumberOfPanels(e.target.value)} className={fieldClass} />
-      </div>
-
-      <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4 mb-6">
-        <div className="text-gray-100 font-semibold mb-3">Roof details (optional)</div>
-
+      <div className={disabled ? "opacity-60" : ""}>
+        {/* Basic inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-gray-300 mb-2">Roof length (in inches)</label>
-            <input type="number" value={roofLength} onChange={(e) => setRoofLength(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Roof width (in inches)</label>
-            <input type="number" value={roofWidth} onChange={(e) => setRoofWidth(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block text-gray-300 mb-2">Roof long-edge azimuth (degrees)</label>
+          <div className="sm:col-span-1">
+            <label className="block text-gray-300 mb-2">Front Leg Height (in inches)</label>
             <input
+              disabled={disabled}
               type="number"
-              value={roofLenAzimuthDeg}
-              onChange={(e) => setRoofLenAzimuthDeg(e.target.value)}
+              value={frontLegHeight}
+              onChange={(e) => setFrontLegHeight(e.target.value)}
               className={fieldClass}
-              placeholder="Example: 45, 315, 90, 0"
             />
           </div>
 
-          <div className="sm:col-span-2 text-gray-400 text-sm">
-            Panels should face South and be tilted 19° towards South. Rows assumed East–West.
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-gray-300 mb-2">Panel Model</label>
-        <select value={selectedPanelModel} onChange={(e) => setSelectedPanelModel(e.target.value)} className={fieldClass}>
-          {panelModels.map((m) => {
-            const longSide = Math.max(Number(m.width), Number(m.height));
-            const shortSide = Math.min(Number(m.width), Number(m.height));
-            return (
-              <option key={m.id} value={m.name}>
-                {m.name} - {longSide}x{shortSide} - {m.description}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-
-      <div className="mb-6">
-        <label className="block text-gray-300 mb-2">Orientation</label>
-        <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-4 h-14">
-          <input type="checkbox" checked={isVertical} onChange={(e) => setIsVertical(e.target.checked)} />
-          <span className="text-gray-300">Vertical</span>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4 mb-6">
-        <div className="text-gray-100 font-semibold mb-3">Prices & charges</div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-gray-300 mb-2">Per rod price</label>
-            <input type="number" value={rodPrice} onChange={(e) => setRodPrice(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Base plate price</label>
-            <input type="number" value={basePlatePrice} onChange={(e) => setBasePlatePrice(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Anchor bolt price</label>
-            <input type="number" value={anchorBoltPrice} onChange={(e) => setAnchorBoltPrice(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Angle finder price</label>
-            <input type="number" value={angleFitterPrice} onChange={(e) => setAngleFitterPrice(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Normal bolts price</label>
-            <input type="number" value={normalBoltPrice} onChange={(e) => setNormalBoltPrice(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">U-Clamp price</label>
-            <input type="number" value={uClampPrice} onChange={(e) => setUClampPrice(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">U-Clamps per panel</label>
-            <input type="number" value={uClampsPerPanel} onChange={(e) => setUClampsPerPanel(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Fabrication charges</label>
-            <input type="number" value={fabricationCharges} onChange={(e) => setFabricationCharges(e.target.value)} className={fieldClass} />
-          </div>
-
-          <div>
-            <label className="block text-gray-300 mb-2">Installation charges</label>
-            <input type="number" value={installationCharges} onChange={(e) => setInstallationCharges(e.target.value)} className={fieldClass} />
+          <div className="sm:col-span-1">
+            <label className="block text-gray-300 mb-2">Number of Panels</label>
+            <input
+              disabled={disabled}
+              type="number"
+              value={numberOfPanels}
+              onChange={(e) => setNumberOfPanels(e.target.value)}
+              className={fieldClass}
+            />
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-gray-300 mb-2">Wastage charges (%)</label>
-            <input type="number" value={wastagePercent} onChange={(e) => setWastagePercent(e.target.value)} className={fieldClass} />
+            <label className="block text-gray-300 mb-2">Panel Model</label>
+            <select
+              disabled={disabled}
+              value={selectedPanelModel}
+              onChange={(e) => setSelectedPanelModel(e.target.value)}
+              className={fieldClass}
+            >
+              {panelModels.map((m) => {
+                const longSide = Math.max(Number(m.width), Number(m.height));
+                const shortSide = Math.min(Number(m.width), Number(m.height));
+                return (
+                  <option key={m.id} value={m.name}>
+                    {m.name} - {longSide}x{shortSide} - {m.description}
+                  </option>
+                );
+              })}
+            </select>
           </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-gray-300 mb-2">Orientation</label>
+            <div className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-4 h-14">
+              <span className="text-gray-300">Vertical</span>
+              <input
+                disabled={disabled}
+                type="checkbox"
+                checked={isVertical}
+                onChange={(e) => setIsVertical(e.target.checked)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Roof section */}
+        <div className="mt-6">
+          <SectionCard title="Roof details (optional)">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-300 mb-2">Roof length (in inches)</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={roofLength}
+                  onChange={(e) => setRoofLength(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Roof width (in inches)</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={roofWidth}
+                  onChange={(e) => setRoofWidth(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-gray-300 mb-2">Roof long-edge azimuth (degrees)</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={roofLenAzimuthDeg}
+                  onChange={(e) => setRoofLenAzimuthDeg(e.target.value)}
+                  className={fieldClass}
+                  placeholder="Example: 45, 315, 90, 0"
+                />
+              </div>
+
+              <div className="sm:col-span-2 text-gray-400 text-sm">
+                Panels should face South and be tilted 19° towards South. Rows assumed East–West.
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+
+        {/* Pricing section */}
+        <div className="mt-6">
+          <SectionCard title="Prices & charges">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-300 mb-2">Per rod price</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={rodPrice}
+                  onChange={(e) => setRodPrice(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div >
+                <label className="block text-gray-300 mb-2">Wastage charges (%)</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={wastagePercent}
+                  onChange={(e) => setWastagePercent(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Base plate price</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={basePlatePrice}
+                  onChange={(e) => setBasePlatePrice(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Anchor bolt price</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={anchorBoltPrice}
+                  onChange={(e) => setAnchorBoltPrice(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Angle finder price</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={angleFitterPrice}
+                  onChange={(e) => setAngleFitterPrice(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Normal bolts price</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={normalBoltPrice}
+                  onChange={(e) => setNormalBoltPrice(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">U-Clamp price</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={uClampPrice}
+                  onChange={(e) => setUClampPrice(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">U-Clamps per panel</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={uClampsPerPanel}
+                  onChange={(e) => setUClampsPerPanel(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Fabrication charges</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={fabricationCharges}
+                  onChange={(e) => setFabricationCharges(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2">Installation charges</label>
+                <input
+                  disabled={disabled}
+                  type="number"
+                  value={installationCharges}
+                  onChange={(e) => setInstallationCharges(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+          </SectionCard>
         </div>
       </div>
 
       <button
+        disabled={disabled}
         type="button"
         onClick={handleCalculate}
-        className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition w-full"
+        className={`mt-6 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition w-full ${disabled ? "opacity-60 cursor-not-allowed" : ""
+          }`}
       >
         Calculate
       </button>
@@ -1187,9 +1249,7 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
 
         <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
           <div className="text-gray-400 text-xs">Installation charges</div>
-          <div className="text-gray-100 font-semibold text-2xl">
-            ₹ {money(((cost as any).price?.installation ?? 0) as number)}
-          </div>
+          <div className="text-gray-100 font-semibold text-2xl">₹ {money(((cost as any).price?.installation ?? 0) as number)}</div>
         </div>
 
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-900/10 p-4">
@@ -1200,7 +1260,6 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
 
       <div className="mt-4 rounded-xl border border-gray-800 bg-gray-950/40 p-4">
         <div className="text-gray-100 font-semibold mb-2">Breakdown</div>
-
         <div className="text-gray-300 text-sm space-y-1">
           <div>
             Rods (inches): {Number((cost as any).qty?.inchesUsed).toFixed(0)}" × ₹{money((cost as any).price?.rodPerInch)} / inch = ₹
@@ -1238,8 +1297,10 @@ export default function HomeClient() {
   const router = useRouter();
   const projectId = searchParams.get("projectId");
 
-  // null = new/unsaved project, string = editing existing saved record
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+  // ✅ NEW: view mode vs edit mode
+  const [isEditing, setIsEditing] = useState(false);
 
   const [panelModels, setPanelModels] = useState<PanelRow[]>([]);
   const [results, setResults] = useState<any>(null);
@@ -1250,19 +1311,18 @@ export default function HomeClient() {
   const [selectedPanelModel, setSelectedPanelModel] = useState("");
   const [isVertical, setIsVertical] = useState(false);
 
-  // Roof inputs (ONLY size + degrees)
+  // Roof inputs
   const [roofLength, setRoofLength] = useState("");
   const [roofWidth, setRoofWidth] = useState("");
   const [roofLenAzimuthDeg, setRoofLenAzimuthDeg] = useState("");
 
-  // Prices (defaults)
+  // Prices
   const [rodPrice, setRodPrice] = useState("1000");
   const [basePlatePrice, setBasePlatePrice] = useState("150");
   const [anchorBoltPrice, setAnchorBoltPrice] = useState("20");
   const [angleFitterPrice, setAngleFitterPrice] = useState("150");
   const [normalBoltPrice, setNormalBoltPrice] = useState("15");
 
-  // NEW defaults from constant
   const [uClampPrice, setUClampPrice] = useState("45");
   const [uClampsPerPanel, setUClampsPerPanel] = useState(String(HARDWARE_PER_STRUCTURE.uClampsPerPanel));
 
@@ -1270,10 +1330,13 @@ export default function HomeClient() {
   const [installationCharges, setInstallationCharges] = useState("700");
   const [wastagePercent, setWastagePercent] = useState("15");
 
-  // Save-as-project
   const [projectName, setProjectName] = useState("");
-
   const [isReady, setIsReady] = useState(false);
+
+  const isExistingProject = Boolean(projectId);
+
+  // disable inputs unless: new project OR explicitly editing
+  const inputsDisabled = isExistingProject ? !isEditing : false;
 
   useEffect(() => {
     (async () => {
@@ -1290,8 +1353,10 @@ export default function HomeClient() {
   }, []);
 
   useEffect(() => {
-    // if URL has projectId, we are editing an existing project
     setActiveProjectId(projectId || null);
+
+    // ✅ When opening an existing project: go to VIEW mode automatically
+    if (projectId) setIsEditing(false);
   }, [projectId]);
 
   useEffect(() => {
@@ -1314,7 +1379,6 @@ export default function HomeClient() {
         setAngleFitterPrice(String(pricing.angleFitterPrice ?? "150"));
         setNormalBoltPrice(String(pricing.normalBoltPrice ?? "15"));
 
-        // restore U-clamps
         setUClampPrice(String(pricing.uClampPrice ?? "45"));
         setUClampsPerPanel(String(pricing.uClampsPerPanel ?? String(HARDWARE_PER_STRUCTURE.uClampsPerPanel)));
 
@@ -1324,8 +1388,10 @@ export default function HomeClient() {
 
         setResults(p.results || null);
 
-        // ensure in edit mode
         setActiveProjectId(p.id);
+
+        // ✅ lock again when loaded
+        setIsEditing(false);
       } catch (e: any) {
         alert(e?.message || "Failed to load project from cloud.");
       }
@@ -1338,7 +1404,6 @@ export default function HomeClient() {
     }
   }, [panelModels, selectedPanelModel]);
 
-  // ✅ computeCost in your project is called with an object param
   const baseCost: CostData | null = useMemo(() => {
     return computeCost({
       results,
@@ -1357,7 +1422,6 @@ export default function HomeClient() {
     return extendCostWithUClamps(baseCost, results, uClampPrice, uClampsPerPanel);
   }, [baseCost, results, uClampPrice, uClampsPerPanel]);
 
-  // Compute panelLen/panelWid for footprint (based on selected model + orientation)
   const panelDims = useMemo(() => {
     const model = panelModels.find((m) => m.name === selectedPanelModel);
     if (!model) return { panelLen: 0, panelWid: 0 };
@@ -1437,8 +1501,13 @@ export default function HomeClient() {
     return { maxPerStructure, maxByRoof, structures, fit };
   }, [results, roofLength, roofWidth, roofLenAzimuthDeg, panelModels, selectedPanelModel, isVertical, numberOfPanels]);
 
-  // ✅ Save project: create new OR update same record
   const onSaveProject = async () => {
+    // If existing project + not editing => don't allow save
+    if (isExistingProject && !isEditing) {
+      alert("Click Edit first.");
+      return;
+    }
+
     if (!projectName.trim()) {
       alert("Enter project name.");
       return;
@@ -1463,11 +1532,8 @@ export default function HomeClient() {
           normalBoltPrice,
           uClampPrice,
           uClampsPerPanel,
-
-          // keep both keys (your DB already uses both)
           serviceCharges: fabricationCharges,
           fabricationCharges,
-
           installationCharges,
           wastagePercent,
         },
@@ -1479,6 +1545,9 @@ export default function HomeClient() {
       if (activeProjectId) {
         await updateProject(activeProjectId, payload);
         alert("Saved changes to the same project.");
+
+        // ✅ lock again after save
+        setIsEditing(false);
         return;
       }
 
@@ -1487,12 +1556,14 @@ export default function HomeClient() {
 
       setActiveProjectId(created.id);
       router.replace(`/?projectId=${created.id}`);
+
+      // ✅ after creating, consider it “existing” and lock
+      setIsEditing(false);
     } catch (e: any) {
       alert(e?.message || "Failed to save project.");
     }
   };
 
-  // build data for StructureSlipPdf (non-repeatable project details)
   const structureSlipData = useMemo(() => {
     if (!results || !panelModels.length) return null;
 
@@ -1502,8 +1573,8 @@ export default function HomeClient() {
     const longSide = Math.max(Number(model.width), Number(model.height));
     const shortSide = Math.min(Number(model.width), Number(model.height));
 
-    const panelLen = isVertical ? longSide : shortSide; // along rod
-    const panelWid = isVertical ? shortSide : longSide; // across
+    const panelLen = isVertical ? longSide : shortSide;
+    const panelWid = isVertical ? shortSide : longSide;
 
     const totalPanels = results?.structures?.reduce(
       (sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0),
@@ -1512,7 +1583,6 @@ export default function HomeClient() {
 
     const totalStructures = results?.structures?.reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
 
-    // Cutting patterns (same logic as RodCuttingSuggestions)
     let cuttingPatterns: { pattern: string; count: number; exampleWaste: string }[] = [];
     let totalWaste = "0";
 
@@ -1541,7 +1611,6 @@ export default function HomeClient() {
       }));
     }
 
-    // footprint (based on max panels structure) - NO GAP included
     const maxPanelsInOneStructure = results?.structures?.length
       ? Math.max(...results.structures.map((s: any) => Number(s.panels) || 0))
       : 0;
@@ -1555,17 +1624,14 @@ export default function HomeClient() {
     return {
       projectName: projectName || "My Project",
       date: new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" }),
-
       panelModel: selectedPanelModel,
       panelLen,
       panelWid,
       totalPanels: Number.isFinite(totalPanels) ? totalPanels : 0,
       orientation: isVertical ? "Vertical" : "Horizontal",
-
       frontLegHeight: Number(frontLegHeight || 0),
       rearLegHeight: results?.rods?.breakdown?.[0]?.legs?.rearLegHeight ? Number(results.rods.breakdown[0].legs.rearLegHeight) : 0,
       tiltAngle: TILT_ANGLE,
-
       structures: (results?.rods?.breakdown || []).map((b: any) => ({
         panels: b.panels,
         count: b.count,
@@ -1575,19 +1641,15 @@ export default function HomeClient() {
         hypoRodsCount: b.hypoRodsCount,
         inchesThisType: b.inchesThisType,
       })),
-
       footprintLen,
       footprintWid,
-
       totalRods: results?.rods?.totals?.totalRodsNeeded || 0,
       totalInches: results?.rods?.totals?.totalInchesRequired || "0",
       totalFrontLegs: results?.rods?.totals?.totalFrontLegs || 0,
       totalRearLegs: results?.rods?.totals?.totalRearLegs || 0,
       totalHypoRods: results?.rods?.totals?.totalHypoRods || 0,
-
       cuttingPatterns,
       totalWaste,
-
       hardware: {
         basePlates: totalStructures * HARDWARE_PER_STRUCTURE.basePlates,
         anchorBolts: totalStructures * HARDWARE_PER_STRUCTURE.anchorBolts,
@@ -1597,7 +1659,6 @@ export default function HomeClient() {
           (Number.isFinite(totalPanels) ? totalPanels : 0) *
           (uClampsPerPanel === "" ? HARDWARE_PER_STRUCTURE.uClampsPerPanel : Math.max(0, Math.floor(toNumSafe(uClampsPerPanel, 0)))),
       },
-
       cost,
     };
   }, [results, panelModels, selectedPanelModel, isVertical, frontLegHeight, projectName, cost, uClampsPerPanel]);
@@ -1605,6 +1666,36 @@ export default function HomeClient() {
   return (
     <div className="bg-gray-950 text-gray-100 min-h-screen antialiased">
       <div className="p-6 max-w-3xl mx-auto">
+        {/* ✅ Top bar with Edit button */}
+        <div className={`${cardClass} p-4 mb-4 flex items-center justify-between`}>
+          <div className="text-gray-100 font-semibold">
+            {isExistingProject ? "" : "New project"}
+            {isExistingProject && isEditing ? "Project (Edit mode)" : "Project (View mode)"}
+          </div>
+
+          <div className="flex items-center gap-2">
+
+            {isExistingProject && !isEditing && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors px-4 py-2 border border-gray-700"              >
+                Edit
+              </button>
+            )}
+
+            {isExistingProject && isEditing && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors px-4 py-2 border border-gray-600"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+
         {!isReady ? (
           <div className={`${cardClass} p-6`}>
             <div className="text-gray-400">Loading panel models...</div>
@@ -1613,6 +1704,7 @@ export default function HomeClient() {
           <InputForm
             panelModels={panelModels}
             onCalculate={setResults}
+            disabled={inputsDisabled}
             frontLegHeight={frontLegHeight}
             setFrontLegHeight={setFrontLegHeight}
             numberOfPanels={numberOfPanels}
@@ -1651,11 +1743,8 @@ export default function HomeClient() {
         )}
 
         <ResultsTable results={results} panelLen={panelDims.panelLen} panelWid={panelDims.panelWid} />
-
         <RoofFitCard currentFit={currentRoofFit} optimized={roofOptimized} roofLength={roofLength} roofWidth={roofWidth} roofLenAzimuthDeg={roofLenAzimuthDeg} />
-
         <RodCuttingSuggestions results={results} />
-
         <HardwareTotals
           results={results}
           basePlatePrice={basePlatePrice}
@@ -1665,23 +1754,35 @@ export default function HomeClient() {
           uClampPrice={uClampPrice}
           uClampsPerPanel={uClampsPerPanel}
         />
-
         <CostSummary cost={cost} />
 
+        {/* Save card */}
         <div className={`${cardClass} p-6 mt-6`}>
-          
+          <h2 className="text-xl font-semibold text-gray-100">Save</h2>
+
           <div className="mt-4">
             <label className="block text-gray-300 mb-2">Project name</label>
-            <input value={projectName} onChange={(e) => setProjectName(e.target.value)} className={fieldClass} />
+            <input
+              disabled={isExistingProject && !isEditing}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              className={`${fieldClass} ${isExistingProject && !isEditing ? "opacity-60" : ""}`}
+            />
           </div>
 
           <button
             type="button"
             onClick={onSaveProject}
-            className="mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition"
+            disabled={isExistingProject && !isEditing}
+            className={`mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition ${isExistingProject && !isEditing ? "opacity-60 cursor-not-allowed" : ""
+              }`}
           >
             {activeProjectId ? "Save Changes" : "Save Project"}
           </button>
+
+          {isExistingProject && !isEditing && (
+            <div className="text-gray-400 text-sm mt-2">This project is in view mode. Click Edit (top-right) to modify.</div>
+          )}
         </div>
 
         {structureSlipData && (
