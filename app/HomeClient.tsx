@@ -31,16 +31,79 @@ const calculatePanelsPerRod = (panelLen: number, rodLength: number = ROD_LENGTH,
   return maxPanels - 1;
 };
 
-const smartDistributePanels = (totalPanels: number, maxPanelsPerRod: number) => {
-  const fullStructures = Math.floor(totalPanels / maxPanelsPerRod);
-  const remainingPanels = totalPanels % maxPanelsPerRod;
+/**
+ * Structure footprint length along the rod direction (inches)
+ */
+const structureFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
+  if (panelsInStructure <= 0) return 0;
+  return panelsInStructure * panelLen + (panelsInStructure - 1) * gap;
+};
 
-  if (remainingPanels === 0) return [{ panels: maxPanelsPerRod, count: fullStructures }];
+/**
+ * Balanced distribution:
+ * prefers more "square-ish" structures (length ~ width) rather than one long structure,
+ * while respecting maxPanelsPerRod.
+ *
+ * Example: total=4, max=4 -> tends to pick 2+2 instead of 4 (if 4 becomes too long vs width).
+ */
+const distributePanelsBalanced = (
+  totalPanels: number,
+  maxPanelsPerRod: number,
+  panelLen: number,
+  panelWid: number,
+  gap: number = GAP
+) => {
+  const N = Math.max(0, Math.floor(totalPanels));
+  const maxK = Math.max(1, Math.floor(maxPanelsPerRod));
 
-  return [
-    { panels: maxPanelsPerRod, count: fullStructures },
-    { panels: remainingPanels, count: 1 },
-  ].filter((s) => s.count > 0);
+  // Tuning knobs:
+  // Lower => more splitting allowed (more structures)
+  // Higher => fewer structures (longer structures)
+  const STRUCTURE_PENALTY = 0.35;
+
+  // Penalize structures that are too long or too short compared to width.
+  // 0 when perfect square-ish, grows as ratio drifts.
+  const aspectPenalty = (k: number) => {
+    const L = structureFootprintLen(k, panelLen, gap);
+    const W = Math.max(1e-6, panelWid);
+    const ratio = L / W;
+    return Math.abs(Math.log(ratio));
+  };
+
+  // dp[n] = best score to split n panels
+  const dp = Array(N + 1).fill(Infinity);
+  const pick = Array(N + 1).fill(0);
+  dp[0] = 0;
+
+  for (let n = 1; n <= N; n++) {
+    const lim = Math.min(maxK, n);
+    for (let k = 1; k <= lim; k++) {
+      const score = dp[n - k] + aspectPenalty(k) + STRUCTURE_PENALTY;
+      if (score < dp[n]) {
+        dp[n] = score;
+        pick[n] = k;
+      }
+    }
+  }
+
+  // Reconstruct solution
+  const sizes: number[] = [];
+  let n = N;
+  while (n > 0) {
+    const k = pick[n] || 1;
+    sizes.push(k);
+    n -= k;
+  }
+
+  // Compress into [{panels, count}]
+  sizes.sort((a, b) => b - a);
+  const out: { panels: number; count: number }[] = [];
+  for (const k of sizes) {
+    const last = out[out.length - 1];
+    if (last && last.panels === k) last.count += 1;
+    else out.push({ panels: k, count: 1 });
+  }
+  return out;
 };
 
 const calculateLegsPerStructure = (
@@ -526,7 +589,11 @@ const InputForm = ({
 
     const longSide = Math.max(Number(selectedModel.width), Number(selectedModel.height));
     const shortSide = Math.min(Number(selectedModel.width), Number(selectedModel.height));
+
+    // along the rod
     const panelLen = isVertical ? longSide : shortSide;
+    // across the structure
+    const panelWid = isVertical ? shortSide : longSide;
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
     if (maxPanelsPerRod <= 0) {
@@ -537,7 +604,7 @@ const InputForm = ({
     const totalPanels = parseInt(numberOfPanels, 10);
     const front = parseFloat(frontLegHeight);
 
-    const structures = smartDistributePanels(totalPanels, maxPanelsPerRod);
+    const structures = distributePanelsBalanced(totalPanels, maxPanelsPerRod, panelLen, panelWid, GAP);
     const rods = calculateRodsForProject(structures, front, panelLen);
 
     onCalculate({ maxPanelsPerRod, structures, rods });
