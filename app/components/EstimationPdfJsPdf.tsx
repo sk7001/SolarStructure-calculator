@@ -40,18 +40,15 @@ export default function EstimationPdfJsPdf({
       day: "numeric",
     });
 
-    // ===== Header (logo + business details + contact) =====
-    // IMPORTANT: logo must be in /public/talogo.png
+    // ===== Header =====
     const logoDataUrl = await loadAsDataURL("/talogo.png");
 
     const headerTopY = 30;
     const logoW = 48;
     const logoH = 48;
 
-    // Logo (top-left)
     doc.addImage(logoDataUrl, "PNG", margin, headerTopY, logoW, logoH);
 
-    // Left text (after logo)
     const leftTextX = margin + logoW + 12;
 
     doc.setFont("helvetica", "bold");
@@ -64,7 +61,6 @@ export default function EstimationPdfJsPdf({
     doc.setTextColor(60);
     doc.text("Housing board, Rayagada, Odisha, 765001", leftTextX, headerTopY + 34);
 
-    // Right block (top-right)
     const rightX = pageW - margin;
 
     doc.setFont("helvetica", "bold");
@@ -82,19 +78,14 @@ export default function EstimationPdfJsPdf({
     const email = "tarunagencies25@gmail.com";
     const emailY = headerTopY + 48;
 
-    // Email (clickable mailto)
     doc.setTextColor(0, 0, 255);
-    doc.textWithLink(email, rightX - doc.getTextWidth(email), emailY, {
-      url: `mailto:${email}`,
-    });
+    doc.textWithLink(email, rightX - doc.getTextWidth(email), emailY, { url: `mailto:${email}` });
     doc.setTextColor(60);
 
-    // Divider line under header
     const headerBottomY = headerTopY + logoH + 14;
     doc.setDrawColor(200);
     doc.line(margin, headerBottomY, pageW - margin, headerBottomY);
 
-    // ===== Date BELOW the line (top-right) =====
     const dateLine = `Date: ${dateStr}`;
     const dateY = headerBottomY + 16;
 
@@ -103,14 +94,12 @@ export default function EstimationPdfJsPdf({
     doc.setTextColor(60);
     doc.text(dateLine, rightX - doc.getTextWidth(dateLine), dateY);
 
-    // ===== Center title (smaller) =====
     const titleY = headerBottomY + 40;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
     doc.setTextColor(0);
     doc.text("Solar Structure Cost Estimation", pageW / 2, titleY, { align: "center" });
 
-    // Project name under title (center)
     let contentStartY = titleY + 22;
     if (projectName?.trim()) {
       const p = `Project: ${projectName.trim()}`;
@@ -121,24 +110,87 @@ export default function EstimationPdfJsPdf({
       contentStartY = titleY + 32;
     }
 
-    // ===== Table =====
+    // ===== Wastage baked into Rod per-inch =====
+    const pct = Number(cost.price.wastagePct) || 0;
+    const factor = 1 + pct / 100;
+
+    const effectiveRodPerInch = cost.price.rodPerInch * factor;
+    const rodTotal = cost.qty.inchesUsed * effectiveRodPerInch;
+
+    // Recompute material subtotal so table totals match (no separate wastage row)
+    const materialSubtotal =
+      rodTotal +
+      cost.items.basePlates +
+      cost.items.anchorBolts +
+      cost.items.angleFitters +
+      cost.items.normalBolts;
+
+    // Recompute grand total for PDF
+    const grandTotal =
+      materialSubtotal +
+      cost.price.service +
+      (cost.price.installation ?? 0);
+
+    const breakdownRows: any[] = [
+      [
+        "  Rod (GI)",
+        `${cost.qty.inchesUsed.toFixed(2)} in`,
+        `INR ${money(effectiveRodPerInch)}/in`,
+        `INR ${money(rodTotal)}`,
+      ],
+      [
+        "  Base Plates",
+        `${cost.qty.basePlates} units`,
+        `INR ${money(cost.price.basePlate)}/unit`,
+        `INR ${money(cost.items.basePlates)}`,
+      ],
+      [
+        "  Anchor Bolts",
+        `${cost.qty.anchorBolts} units`,
+        `INR ${money(cost.price.anchorBolt)}/unit`,
+        `INR ${money(cost.items.anchorBolts)}`,
+      ],
+      [
+        "  Angle Fitters",
+        `${cost.qty.angleFitters} units`,
+        `INR ${money(cost.price.angleFitter)}/unit`,
+        `INR ${money(cost.items.angleFitters)}`,
+      ],
+      [
+        "  Nuts (Normal bolts)",
+        `${cost.qty.normalBolts} units`,
+        `INR ${money(cost.price.normalBolt)}/unit`,
+        `INR ${money(cost.items.normalBolts)}`,
+      ],
+    ];
+
+    const mainBody: any[] = [
+      ["Materials", "", "", `INR ${money(materialSubtotal)}`],
+      ...breakdownRows,
+      ["Fabrication charges", "", "", `INR ${money(cost.price.service)}`],
+      ["Installation charges", "", "", `INR ${money(cost.price.installation ?? 0)}`],
+      ["GRAND TOTAL", "", "", `INR ${money(grandTotal)}`],
+    ];
+
     autoTable(doc, {
       startY: contentStartY,
       theme: "grid",
-      head: [["Item", "Amount (INR)"]],
-      body: [
-        ["Subtotal", `INR ${money(cost.subtotal)}`],
-        [`Wastage (${Number(cost.price.wastagePct).toFixed(0)}%)`, `INR ${money(cost.wastage)}`],
-        ["Service charges", `INR ${money(cost.price.service)}`],
-        ["GRAND TOTAL", `INR ${money(cost.total)}`],
-      ],
-      styles: { font: "helvetica", fontSize: 11, cellPadding: 6 },
-      headStyles: { fillColor: [17, 24, 39], textColor: 255 },
+      head: [["Item", "Quantity", "Price/Unit", "Total (INR)"]],
+      body: mainBody,
+      styles: { font: "helvetica", fontSize: 10, cellPadding: 6 },
+      headStyles: { fillColor: [17, 24, 39], textColor: 255, fontStyle: "bold" },
       didParseCell: (data) => {
-        if (data.column.index === 1) data.cell.styles.halign = "right";
-        if (data.section === "body" && data.row.index === 3) {
-          data.cell.styles.fontStyle = "bold";
-          data.cell.styles.fillColor = [220, 252, 231];
+        if (data.column.index === 0) data.cell.styles.halign = "left";
+        if (data.column.index >= 1) data.cell.styles.halign = "right";
+
+        if (data.section === "body") {
+          const label = String((data.row.raw as any[])[0] ?? "").trim();
+          if (["Materials", "Fabrication charges", "Installation charges", "GRAND TOTAL"].includes(label)) {
+            data.cell.styles.fontStyle = "bold";
+          }
+          if (label === "GRAND TOTAL") {
+            data.cell.styles.fillColor = [220, 252, 231];
+          }
         }
       },
     });
@@ -148,11 +200,7 @@ export default function EstimationPdfJsPdf({
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(100);
-    doc.text(
-      "Note: This is an estimation. Final amount may change based on site conditions.",
-      margin,
-      finalY + 25
-    );
+    doc.text("Note: This is an estimation. Final amount may change based on site conditions.", margin, finalY + 25);
 
     doc.save(`Estimation-${(projectName || "Project").replaceAll(" ", "-")}-${Date.now()}.pdf`);
   };

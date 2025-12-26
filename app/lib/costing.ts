@@ -23,7 +23,16 @@ export type CostData = {
     anchorBolt: number;
     angleFitter: number;
     normalBolt: number;
+
+    /**
+     * Kept as `service` for backward compatibility with existing UI & saved projects.
+     * In your UI this is shown as "Fabrication charges".
+     */
     service: number;
+
+    /** Installation charges (fixed) */
+    installation: number;
+
     wastagePct: number;
   };
   items: {
@@ -50,7 +59,13 @@ export function computeCost(params: {
   anchorBoltPrice: string;
   angleFitterPrice: string;
   normalBoltPrice: string;
+
+  /** In UI: Fabrication charges (kept param name for backward compatibility) */
   serviceCharges: string;
+
+  /** NEW: Installation charges */
+  installationCharges: string;
+
   wastagePercent: string;
 }): CostData | null {
   const {
@@ -61,6 +76,7 @@ export function computeCost(params: {
     angleFitterPrice,
     normalBoltPrice,
     serviceCharges,
+    installationCharges,
     wastagePercent,
   } = params;
 
@@ -89,7 +105,13 @@ export function computeCost(params: {
     anchorBolt: toNum(anchorBoltPrice, 20),
     angleFitter: toNum(angleFitterPrice, 150),
     normalBolt: toNum(normalBoltPrice, 15),
+
+    // In UI: Fabrication charges
     service: toNum(serviceCharges, 1500),
+
+    // NEW
+    installation: toNum(installationCharges, 0),
+
     wastagePct: toNum(wastagePercent, 15),
   };
 
@@ -101,11 +123,11 @@ export function computeCost(params: {
     normalBolts: qty.normalBolts * price.normalBolt,
   };
 
-  const subtotal =
-    items.rodsByInches + items.basePlates + items.anchorBolts + items.angleFitters + items.normalBolts;
-
+  const subtotal = items.rodsByInches + items.basePlates + items.anchorBolts + items.angleFitters + items.normalBolts;
   const wastage = (subtotal * price.wastagePct) / 100;
-  const total = subtotal + wastage + price.service;
+
+  // Installation is a fixed add-on similar to fabrication.
+  const total = subtotal + wastage + price.service + price.installation;
 
   return { qty, price, items, subtotal, wastage, total };
 }

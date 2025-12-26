@@ -830,8 +830,10 @@ const InputForm = ({
   setAngleFitterPrice,
   normalBoltPrice,
   setNormalBoltPrice,
-  serviceCharges,
-  setServiceCharges,
+  fabricationCharges,
+  setFabricationCharges,
+  installationCharges,
+  setInstallationCharges,
   wastagePercent,
   setWastagePercent,
 }: {
@@ -874,8 +876,11 @@ const InputForm = ({
   normalBoltPrice: string;
   setNormalBoltPrice: (v: string) => void;
 
-  serviceCharges: string;
-  setServiceCharges: (v: string) => void;
+  fabricationCharges: string;
+  setFabricationCharges: (v: string) => void;
+
+  installationCharges: string;
+  setInstallationCharges: (v: string) => void;
 
   wastagePercent: string;
   setWastagePercent: (v: string) => void;
@@ -1060,11 +1065,21 @@ const InputForm = ({
           </div>
 
           <div>
-            <label className="block text-gray-300 mb-2">Service charges</label>
+            <label className="block text-gray-300 mb-2">Fabrication charges</label>
             <input
               type="number"
-              value={serviceCharges}
-              onChange={(e) => setServiceCharges(e.target.value)}
+              value={fabricationCharges}
+              onChange={(e) => setFabricationCharges(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+
+          <div>
+            <label className="block text-gray-300 mb-2">Installation charges</label>
+            <input
+              type="number"
+              value={installationCharges}
+              onChange={(e) => setInstallationCharges(e.target.value)}
               className={fieldClass}
             />
           </div>
@@ -1119,8 +1134,13 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
         </div>
 
         <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-          <div className="text-gray-400 text-xs">Service charges</div>
-          <div className="text-gray-100 font-semibold text-2xl">₹ {money(cost.price.service)}</div>
+          <div className="text-gray-400 text-xs">Fabrication charges</div>
+          <div className="text-gray-100 font-semibold text-2xl">₹ {money((cost.price as any).service ?? 0)}</div>
+        </div>
+
+        <div className="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+          <div className="text-gray-400 text-xs">Installation charges</div>
+          <div className="text-gray-100 font-semibold text-2xl">₹ {money((cost.price as any).installation ?? 0)}</div>
         </div>
 
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-900/10 p-4">
@@ -1179,7 +1199,8 @@ export default function HomeClient() {
   const [anchorBoltPrice, setAnchorBoltPrice] = useState("20");
   const [angleFitterPrice, setAngleFitterPrice] = useState("150");
   const [normalBoltPrice, setNormalBoltPrice] = useState("15");
-  const [serviceCharges, setServiceCharges] = useState("1500");
+  const [fabricationCharges, setFabricationCharges] = useState("1500");
+  const [installationCharges, setInstallationCharges] = useState("700");
   const [wastagePercent, setWastagePercent] = useState("15");
 
   // Save-as-project
@@ -1224,7 +1245,8 @@ export default function HomeClient() {
         setAnchorBoltPrice(String(pricing.anchorBoltPrice ?? "20"));
         setAngleFitterPrice(String(pricing.angleFitterPrice ?? "150"));
         setNormalBoltPrice(String(pricing.normalBoltPrice ?? "15"));
-        setServiceCharges(String(pricing.serviceCharges ?? "1500"));
+        setFabricationCharges(String(pricing.fabricationCharges ?? pricing.serviceCharges ?? "1500"));
+        setInstallationCharges(String(pricing.installationCharges ?? "700"));
         setWastagePercent(String(pricing.wastagePercent ?? "15"));
 
         setResults(p.results || null);
@@ -1250,9 +1272,10 @@ export default function HomeClient() {
       anchorBoltPrice,
       angleFitterPrice,
       normalBoltPrice,
-      serviceCharges,
+      serviceCharges: fabricationCharges,
+      installationCharges,
       wastagePercent,
-    });
+    } as any);
   }, [
     results,
     rodPrice,
@@ -1260,7 +1283,8 @@ export default function HomeClient() {
     anchorBoltPrice,
     angleFitterPrice,
     normalBoltPrice,
-    serviceCharges,
+    fabricationCharges,
+    installationCharges,
     wastagePercent,
   ]);
 
@@ -1356,7 +1380,14 @@ export default function HomeClient() {
             anchorBoltPrice,
             angleFitterPrice,
             normalBoltPrice,
-            serviceCharges,
+
+            // Backward compatible key
+            serviceCharges: fabricationCharges,
+
+            // New names
+            fabricationCharges,
+            installationCharges,
+
             wastagePercent,
           },
           // Still not saving roof fields (keeps your existing schema unchanged).
@@ -1406,8 +1437,10 @@ export default function HomeClient() {
             setAngleFitterPrice={setAngleFitterPrice}
             normalBoltPrice={normalBoltPrice}
             setNormalBoltPrice={setNormalBoltPrice}
-            serviceCharges={serviceCharges}
-            setServiceCharges={setServiceCharges}
+            fabricationCharges={fabricationCharges}
+            setFabricationCharges={setFabricationCharges}
+            installationCharges={installationCharges}
+            setInstallationCharges={setInstallationCharges}
             wastagePercent={wastagePercent}
             setWastagePercent={setWastagePercent}
           />
@@ -1460,7 +1493,6 @@ export default function HomeClient() {
           </button>
         </div>
       </div>
-
       <EstimationPdfJsPdf cost={cost} projectName={projectName} />
     </div>
   );
