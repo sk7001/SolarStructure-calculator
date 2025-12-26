@@ -9,9 +9,13 @@ import { createProject, getProjectById } from "./lib/projectsDb";
 
 import { computeCost, type CostData } from "./lib/costing";
 import EstimationPdfJsPdf from "./components/EstimationPdfJsPdf";
+import StructureSlipPdf from "./components/structureSlipPdf"; // NEW
 
 const ROD_LENGTH = 164;
-const GAP = 5;
+
+// UPDATED: was 5, now 3. Treat as tolerance/error, not physical gap.
+const GAP = 3;
+
 const TILT_ANGLE = 19;
 
 // Hardware per structure
@@ -43,6 +47,7 @@ const calculatePanelsPerRod = (panelLen: number, rodLength: number = ROD_LENGTH,
 
 /**
  * Structure footprint length along the rod direction (inches)
+ * NOTE: this includes GAP (tolerance). This is used for planning/fitment.
  */
 const structureFootprintLen = (panelsInStructure: number, panelLen: number, gap: number) => {
   if (panelsInStructure <= 0) return 0;
@@ -327,8 +332,7 @@ const suggestRoofFit = ({
   const usedAlong = rows.reduce((m, r) => Math.max(m, r.usedAlong), 0);
   const usedSupportAlong = rows.reduce((m, r) => Math.max(m, r.usedSupportAlong), 0);
 
-  const usedAcross =
-    rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
+  const usedAcross = rowWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
 
   const usedSupportAcross =
     rowSupportWidthsAcross.reduce((sum, w) => sum + w, 0) + (rows.length > 1 ? (rows.length - 1) * gap : 0);
@@ -477,7 +481,7 @@ const RodCuttingSuggestions = ({ results }: { results: any }) => {
   );
 };
 
-/** ===== Hardware totals (UPDATED to include U-Clamps) ===== */
+/** ===== Hardware totals (includes U-Clamps) ===== */
 const HardwareTotals = ({
   results,
   basePlatePrice,
@@ -515,7 +519,9 @@ const HardwareTotals = ({
 
   const totals = useMemo(() => {
     const perPanel =
-      uClampsPerPanel === "" ? HARDWARE_PER_STRUCTURE.uClampsPerPanel : Math.max(0, Math.floor(toNum(uClampsPerPanel, 0)));
+      uClampsPerPanel === ""
+        ? HARDWARE_PER_STRUCTURE.uClampsPerPanel
+        : Math.max(0, Math.floor(toNum(uClampsPerPanel, 0)));
 
     const qty = {
       structures: totalStructures,
@@ -615,11 +621,32 @@ const HardwareTotals = ({
   );
 };
 
-/** ===== Results ===== */
-const ResultsTable = ({ results }: { results: any }) => {
+/** ===== Results (UPDATED: per-structure footprint) ===== */
+const ResultsTable = ({
+  results,
+  panelLen,
+  panelWid,
+}: {
+  results: any;
+  panelLen: number;
+  panelWid: number;
+}) => {
   if (!results) return null;
 
   const { maxPanelsPerRod, structures, rods } = results;
+
+  const shrink = 2 / 3;
+  const tiltRad = (TILT_ANGLE * Math.PI) / 180;
+
+  // Structure-to-structure footprint (NO GAP included)
+  const footprintTextForPanels = (panelsInStructure: number) => {
+    if (!Number.isFinite(panelLen) || !Number.isFinite(panelWid) || panelLen <= 0 || panelWid <= 0) return "-";
+
+    const legToLegAlong = panelsInStructure * panelLen * shrink;
+    const legToLegAcross = panelWid * shrink * Math.cos(tiltRad);
+
+    return `${legToLegAlong.toFixed(1)}" × ${legToLegAcross.toFixed(1)}"`;
+  };
 
   return (
     <div className={`${cardClass} p-6 mt-6`}>
@@ -630,7 +657,9 @@ const ResultsTable = ({ results }: { results: any }) => {
           rods.isUniform ? "bg-green-900/20 border-green-800" : "bg-yellow-900/20 border-yellow-800"
         }`}
       >
-        <div className="font-semibold mb-1">{rods.isUniform ? "Uniform structures" : "Mixed structures"}</div>
+        <div className="font-semibold mb-1">
+          {rods.isUniform ? "Uniform structures" : "Mixed structures"}
+        </div>
         <div className="text-gray-200">
           {structures
             .map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`)
@@ -653,15 +682,22 @@ const ResultsTable = ({ results }: { results: any }) => {
 
           <tr>
             <td className="border-b border-gray-800 p-2">Structure Distribution</td>
-            <td className="border-b border-gray-800 p-2">{structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}</td>
+            <td className="border-b border-gray-800 p-2">
+              {structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}
+            </td>
           </tr>
 
           {rods.breakdown.map((b: any, idx: number) => (
             <React.Fragment key={`${b.panels}-${idx}`}>
+              {/* ✅ FOOTPRINT IN HEADER ROW - WITH "Footprint" TITLE */}
               <tr className="bg-gray-950/40">
-                <td className="border-b border-gray-800 p-2 font-semibold" colSpan={2}>
+                <td className="border-b border-gray-800 p-2 font-semibold">
                   {b.count} × {b.panels}-panel structure
+                  <span className="ml-4 px-3 py-1 bg-orange-900/30 text-orange-200 text-xs rounded-full font-medium inline-flex items-center gap-1">
+                    Footprint: {footprintTextForPanels(Number(b.panels))}
+                  </span>
                 </td>
+                <td></td>
               </tr>
 
               <tr>
@@ -687,14 +723,18 @@ const ResultsTable = ({ results }: { results: any }) => {
             </React.Fragment>
           ))}
 
+          <tr className="h-4"></tr>
+
           <tr className="bg-green-900/30">
-            <td className="border-b border-gray-800 p-2 font-bold text-lg">TOTAL GI Rods (164")</td>
-            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">{rods.totals.totalRodsNeeded}</td>
+            <td className="border-b border-gray-800 p-2 font-bold text-lg">Total GI Rods (164")</td>
+            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">
+              {rods.totals.totalRodsNeeded}
+            </td>
           </tr>
 
-          <tr>
-            <td className="border-b border-gray-800 p-2">Total Material Length</td>
-            <td className="border-b border-gray-800 p-2">{rods.totals.totalInchesRequired} inches</td>
+          <tr className="bg-yellow-300/30">
+            <td className="border-b border-gray-800 p-2 font-bold">Total Material Length</td>
+            <td className="border-b border-gray-800 p-2 font-bold">{rods.totals.totalInchesRequired} inches</td>
           </tr>
         </tbody>
       </table>
@@ -745,9 +785,8 @@ const RoofFitCard = ({
           </div>
 
           <div
-            className={`p-4 rounded-xl border mb-4 ${
-              currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
-            }`}
+            className={`p-4 rounded-xl border mb-4 ${currentFit.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+              }`}
           >
             <div className="text-gray-100 font-semibold mb-2">
               Current structure layout: {currentFit.fitsPanels ? "Fits" : "Does NOT fit"}
@@ -765,9 +804,8 @@ const RoofFitCard = ({
           </div>
 
           <div
-            className={`p-4 rounded-xl border ${
-              optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
-            }`}
+            className={`p-4 rounded-xl border ${optimized?.fit?.fitsPanels ? "bg-green-900/20 border-green-800" : "bg-red-900/20 border-red-800"
+              }`}
           >
             <div className="text-gray-100 font-semibold mb-2">Roof-optimized suggestion</div>
 
@@ -809,10 +847,7 @@ const toNumSafe = (v: string, fallback = 0) => {
 
 const totalPanelsFromResults = (results: any) => {
   if (!results?.structures?.length) return 0;
-  return results.structures.reduce(
-    (sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0),
-    0
-  );
+  return results.structures.reduce((sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0), 0);
 };
 
 const extendCostWithUClamps = (
@@ -981,7 +1016,7 @@ const InputForm = ({
 
     const maxPanelsPerRod = calculatePanelsPerRod(panelLen);
     if (maxPanelsPerRod <= 0) {
-      alert("Panel length too large to fit on a 164-inch rod with gap.");
+      alert('Panel length too large to fit on a 164-inch rod with gap.');
       return;
     }
 
@@ -1033,9 +1068,7 @@ const InputForm = ({
             />
           </div>
 
-          <div className="sm:col-span-2 text-gray-400 text-sm">
-            Panels should face South and be tilted 19° towards South. Rows assumed East–West.
-          </div>
+          <div className="sm:col-span-2 text-gray-400 text-sm">Panels should face South and be tilted 19° towards South. Rows assumed East–West.</div>
         </div>
       </div>
 
@@ -1180,8 +1213,8 @@ const CostSummary = ({ cost }: { cost: CostData | null }) => {
 
         <div className="text-gray-300 text-sm space-y-1">
           <div>
-            Rods (inches): {Number((cost as any).qty?.inchesUsed).toFixed(0)}" × ₹{money((cost as any).price?.rodPerInch)} / inch = ₹
-            {money((cost as any).items?.rodsByInches)}
+            Rods (inches): {Number((cost as any).qty?.inchesUsed).toFixed(0)}" × ₹{money((cost as any).price?.rodPerInch)} / inch =
+            ₹{money((cost as any).items?.rodsByInches)}
           </div>
 
           <div>
@@ -1331,6 +1364,20 @@ export default function HomeClient() {
     return extendCostWithUClamps(baseCost, results, uClampPrice, uClampsPerPanel);
   }, [baseCost, results, uClampPrice, uClampsPerPanel]);
 
+  // Compute panelLen/panelWid for footprint (based on selected model + orientation)
+  const panelDims = useMemo(() => {
+    const model = panelModels.find((m) => m.name === selectedPanelModel);
+    if (!model) return { panelLen: 0, panelWid: 0 };
+
+    const longSide = Math.max(Number(model.width), Number(model.height));
+    const shortSide = Math.min(Number(model.width), Number(model.height));
+
+    const panelLen = isVertical ? longSide : shortSide;
+    const panelWid = isVertical ? shortSide : longSide;
+
+    return { panelLen, panelWid };
+  }, [panelModels, selectedPanelModel, isVertical]);
+
   const currentRoofFit = useMemo(() => {
     if (!results) return null;
     if (!roofLength || !roofWidth || roofLenAzimuthDeg === "") return null;
@@ -1439,6 +1486,116 @@ export default function HomeClient() {
     }
   };
 
+  // build data for StructureSlipPdf (non-repeatable project details)
+  const structureSlipData = useMemo(() => {
+    if (!results || !panelModels.length) return null;
+
+    const model = panelModels.find((m) => m.name === selectedPanelModel);
+    if (!model) return null;
+
+    const longSide = Math.max(Number(model.width), Number(model.height));
+    const shortSide = Math.min(Number(model.width), Number(model.height));
+
+    const panelLen = isVertical ? longSide : shortSide; // along rod
+    const panelWid = isVertical ? shortSide : longSide; // across
+
+    const totalPanels = results?.structures?.reduce(
+      (sum: number, s: any) => sum + (Number(s.panels) || 0) * (Number(s.count) || 0),
+      0
+    );
+
+    const totalStructures = results?.structures?.reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
+
+    // Cutting patterns (same logic as RodCuttingSuggestions)
+    let cuttingPatterns: { pattern: string; count: number; exampleWaste: string }[] = [];
+    let totalWaste = "0";
+
+    if (results?.rods?.breakdown?.length) {
+      const kerfNum = 0.125;
+      const pieces: { type: string; len: number }[] = [];
+
+      for (const b of results.rods.breakdown) {
+        const frontLen = Number(b.legs.frontLegHeight);
+        const rearLen = Number(b.legs.rearLegHeight);
+        const hypoLen = Number(b.legs.hypotenuseRodLength);
+
+        for (let i = 0; i < b.frontLegsCount; i++) pieces.push({ type: "Front", len: frontLen });
+        for (let i = 0; i < b.rearLegsCount; i++) pieces.push({ type: "Rear", len: rearLen });
+        for (let i = 0; i < b.hypoRodsCount; i++) pieces.push({ type: "Hypo", len: hypoLen });
+      }
+
+      const rodsPlan = buildCutPlanFFD(pieces, ROD_LENGTH, kerfNum);
+      const waste = rodsPlan.reduce((s, r) => s + r.waste, 0);
+      totalWaste = Number(waste.toFixed(2)).toString();
+
+      cuttingPatterns = summarizePatterns(rodsPlan).map((p) => ({
+        pattern: p.pattern,
+        count: p.count,
+        exampleWaste: String(p.exampleWaste),
+      }));
+    }
+
+    // footprint (based on max panels structure) - NO GAP included
+    const maxPanelsInOneStructure = results?.structures?.length
+      ? Math.max(...results.structures.map((s: any) => Number(s.panels) || 0))
+      : 0;
+
+    const shrink = 2 / 3;
+    const tiltRad = (TILT_ANGLE * Math.PI) / 180;
+
+    const footprintLen = maxPanelsInOneStructure * panelLen * shrink;
+    const footprintWid = panelWid * shrink * Math.cos(tiltRad);
+
+    return {
+      projectName: projectName || "My Project",
+      date: new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" }),
+
+      panelModel: selectedPanelModel,
+      panelLen,
+      panelWid,
+      totalPanels: Number.isFinite(totalPanels) ? totalPanels : 0,
+      orientation: isVertical ? "Vertical" : "Horizontal",
+
+      frontLegHeight: Number(frontLegHeight || 0),
+      rearLegHeight: results?.rods?.breakdown?.[0]?.legs?.rearLegHeight ? Number(results.rods.breakdown[0].legs.rearLegHeight) : 0,
+      tiltAngle: TILT_ANGLE,
+
+      structures: (results?.rods?.breakdown || []).map((b: any) => ({
+        panels: b.panels,
+        count: b.count,
+        legs: b.legs,
+        frontLegsCount: b.frontLegsCount,
+        rearLegsCount: b.rearLegsCount,
+        hypoRodsCount: b.hypoRodsCount,
+        inchesThisType: b.inchesThisType,
+      })),
+
+      footprintLen,
+      footprintWid,
+
+      totalRods: results?.rods?.totals?.totalRodsNeeded || 0,
+      totalInches: results?.rods?.totals?.totalInchesRequired || "0",
+      totalFrontLegs: results?.rods?.totals?.totalFrontLegs || 0,
+      totalRearLegs: results?.rods?.totals?.totalRearLegs || 0,
+      totalHypoRods: results?.rods?.totals?.totalHypoRods || 0,
+
+      cuttingPatterns,
+      totalWaste,
+
+      hardware: {
+        basePlates: totalStructures * HARDWARE_PER_STRUCTURE.basePlates,
+        anchorBolts: totalStructures * HARDWARE_PER_STRUCTURE.anchorBolts,
+        angleAttachers: totalStructures * HARDWARE_PER_STRUCTURE.angleAttachers,
+        nuts: totalStructures * HARDWARE_PER_STRUCTURE.nuts,
+        uClamps:
+          (Number.isFinite(totalPanels) ? totalPanels : 0) *
+          (uClampsPerPanel === "" ? HARDWARE_PER_STRUCTURE.uClampsPerPanel : Math.max(0, Math.floor(toNumSafe(uClampsPerPanel, 0)))),
+      },
+
+      cost,
+    };
+  }, [results, panelModels, selectedPanelModel, isVertical, frontLegHeight, projectName, cost, uClampsPerPanel]);
+
   return (
     <div className="bg-gray-950 text-gray-100 min-h-screen antialiased">
       <div className="p-6 max-w-3xl mx-auto">
@@ -1487,7 +1644,7 @@ export default function HomeClient() {
           />
         )}
 
-        <ResultsTable results={results} />
+        <ResultsTable results={results} panelLen={panelDims.panelLen} panelWid={panelDims.panelWid} />
 
         <RoofFitCard
           currentFit={currentRoofFit}
@@ -1499,7 +1656,6 @@ export default function HomeClient() {
 
         <RodCuttingSuggestions results={results} />
 
-        {/* UPDATED: includes U-clamps */}
         <HardwareTotals
           results={results}
           basePlatePrice={basePlatePrice}
@@ -1536,9 +1692,17 @@ export default function HomeClient() {
             Save Project
           </button>
         </div>
-      </div>
 
-      <EstimationPdfJsPdf cost={cost} projectName={projectName} />
+        {structureSlipData && (
+          <div className="mt-6">
+            <StructureSlipPdf data={structureSlipData} />
+          </div>
+        )}
+
+        <div className="mt-6">
+          <EstimationPdfJsPdf cost={cost} projectName={projectName} />
+        </div>
+      </div>
     </div>
   );
 }
