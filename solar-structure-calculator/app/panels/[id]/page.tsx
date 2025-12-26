@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { deletePanel, getPanelById, updatePanel } from "../../lib/panelsStorage";
+import { deletePanel, getPanelById, updatePanel, type PanelRow } from "../../lib/panelsDb";
 
 const fieldClass =
   "w-full h-14 rounded-lg bg-gray-800 text-gray-100 border border-gray-700 px-4 " +
@@ -14,11 +14,10 @@ const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
 export default function EditPanelPage() {
   const params = useParams();
   const router = useRouter();
-
   const id = String(params?.id || "");
 
   const [loading, setLoading] = useState(true);
-  const [panel, setPanel] = useState(null);
+  const [panel, setPanel] = useState<PanelRow | null>(null);
 
   const [name, setName] = useState("");
   const [width, setWidth] = useState("");
@@ -26,47 +25,51 @@ export default function EditPanelPage() {
   const [description, setDescription] = useState("");
 
   useEffect(() => {
-    const p = getPanelById(id);
-    setPanel(p);
+    (async () => {
+      try {
+        setLoading(true);
+        const p = await getPanelById(id);
+        setPanel(p);
 
-    if (p) {
-      setName(p.name || "");
-      setWidth(String(p.width ?? ""));
-      setHeight(String(p.height ?? ""));
-      setDescription(p.description || "");
-    }
-
-    setLoading(false);
+        setName(p.name || "");
+        setWidth(String(p.width ?? ""));
+        setHeight(String(p.height ?? ""));
+        setDescription(p.description || "");
+      } catch (e: any) {
+        setPanel(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [id]);
 
-  const onSave = () => {
+  const onSave = async () => {
     if (!name || !width || !height) {
       alert("Please fill Name, Width, Height.");
       return;
     }
 
     try {
-      updatePanel(id, {
+      await updatePanel(id, {
         name,
         width: Number(width),
         height: Number(height),
         description,
       });
       router.push("/panels");
-    } catch (e) {
-      // This will now show duplicate-name or duplicate-dimension errors too
+    } catch (e: any) {
       alert(e?.message || "Failed to save.");
     }
   };
 
-  const onDelete = () => {
+  const onDelete = async () => {
     const ok = confirm("Delete this panel model?");
     if (!ok) return;
 
     try {
-      deletePanel(id);
+      await deletePanel(id);
       router.push("/panels");
-    } catch (e) {
+    } catch (e: any) {
       alert(e?.message || "Failed to delete.");
     }
   };
@@ -123,16 +126,15 @@ export default function EditPanelPage() {
                 onClick={onSave}
                 className="mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition"
               >
-                Save Changes
+                Save Changes (Cloud)
               </button>
 
-              {/* Delete stays INSIDE edit page only */}
               <button
                 type="button"
                 onClick={onDelete}
                 className="mt-3 w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-4 py-3 rounded-lg shadow-md transition"
               >
-                Delete Panel Model
+                Delete Panel Model (Cloud)
               </button>
             </>
           )}

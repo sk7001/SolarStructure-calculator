@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { addPiece, clearPieces, deletePiece, loadPieces } from "../lib/piecesStorage";
+import { clearPieces, createPiece, deletePieceById, listPieces, type PieceRow } from "../lib/piecesDb";
 
 const fieldClass =
   "w-full h-14 rounded-lg bg-gray-800 text-gray-100 border border-gray-700 px-4 " +
@@ -11,14 +11,29 @@ const fieldClass =
 const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
 
 export default function PiecesPage() {
-  const [pieces, setPieces] = useState([]);
+  const [pieces, setPieces] = useState<PieceRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [len, setLen] = useState("");
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
 
+  const refresh = async () => {
+    const rows = await listPieces();
+    setPieces(rows);
+  };
+
   useEffect(() => {
-    setPieces(loadPieces());
+    (async () => {
+      try {
+        setLoading(true);
+        await refresh();
+      } catch (e: any) {
+        alert(e?.message || "Failed to load pieces from cloud.");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const totals = useMemo(() => {
@@ -28,7 +43,7 @@ export default function PiecesPage() {
     };
   }, [pieces]);
 
-  const onAdd = () => {
+  const onAdd = async () => {
     if (!len || !qty) {
       alert("Please fill Length and Quantity.");
       return;
@@ -42,24 +57,40 @@ export default function PiecesPage() {
       return;
     }
 
-    const next = addPiece({ len: L, qty: Q, note });
-    setPieces(next);
+    try {
+      await createPiece({ len: L, qty: Q, note });
+      await refresh();
 
-    setLen("");
-    setQty("");
-    setNote("");
+      setLen("");
+      setQty("");
+      setNote("");
+    } catch (e: any) {
+      alert(e?.message || "Failed to add piece.");
+    }
   };
 
-  const onDelete = (id) => {
+  const onDelete = async (id: string) => {
     const ok = confirm("Delete this inventory line?");
     if (!ok) return;
-    setPieces(deletePiece(id));
+
+    try {
+      await deletePieceById(id);
+      await refresh();
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete.");
+    }
   };
 
-  const onClear = () => {
+  const onClear = async () => {
     const ok = confirm("Clear ALL usable pieces inventory?");
     if (!ok) return;
-    setPieces(clearPieces());
+
+    try {
+      await clearPieces();
+      await refresh();
+    } catch (e: any) {
+      alert(e?.message || "Failed to clear.");
+    }
   };
 
   return (
@@ -105,7 +136,7 @@ export default function PiecesPage() {
             onClick={onAdd}
             className="mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3 rounded-lg shadow-md transition"
           >
-            Add to inventory
+            Add to inventory (Cloud)
           </button>
 
           <button
@@ -113,14 +144,16 @@ export default function PiecesPage() {
             onClick={onClear}
             className="mt-3 w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-4 py-3 rounded-lg shadow-md transition"
           >
-            Clear inventory
+            Clear inventory (Cloud)
           </button>
         </div>
 
         <div className={`${cardClass} p-6 mt-6`}>
           <h2 className="text-xl font-semibold mb-4">Saved usable pieces</h2>
 
-          {pieces.length === 0 ? (
+          {loading ? (
+            <div className="text-gray-400">Loading...</div>
+          ) : pieces.length === 0 ? (
             <div className="text-gray-400">No saved pieces.</div>
           ) : (
             <div className="space-y-3">

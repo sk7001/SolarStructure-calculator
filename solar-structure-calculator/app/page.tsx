@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { loadPanels } from "./lib/panelsStorage";
-import { addProject, popActiveProjectId, getProjectById } from "./lib/projectsStorage";
+import { useSearchParams } from "next/navigation";
+import { listPanels, seedDefaultPanelsIfEmpty, type PanelRow } from "./lib/panelsDb";
+import { createProject, getProjectById } from "./lib/projectsDb";
 
 const ROD_LENGTH = 164;
 const GAP = 5;
@@ -19,7 +20,7 @@ const HARDWARE_PER_STRUCTURE = {
 
 /** ===== Calculations (UNCHANGED) ===== */
 
-const calculatePanelsPerRod = (panelLen, rodLength = ROD_LENGTH, gap = GAP) => {
+const calculatePanelsPerRod = (panelLen: number, rodLength: number = ROD_LENGTH, gap: number = GAP) => {
   let maxPanels = 0;
   while (maxPanels * panelLen + (maxPanels - 1) * gap <= rodLength) {
     maxPanels++;
@@ -27,7 +28,7 @@ const calculatePanelsPerRod = (panelLen, rodLength = ROD_LENGTH, gap = GAP) => {
   return maxPanels - 1;
 };
 
-const smartDistributePanels = (totalPanels, maxPanelsPerRod) => {
+const smartDistributePanels = (totalPanels: number, maxPanelsPerRod: number) => {
   const fullStructures = Math.floor(totalPanels / maxPanelsPerRod);
   const remainingPanels = totalPanels % maxPanelsPerRod;
 
@@ -40,11 +41,11 @@ const smartDistributePanels = (totalPanels, maxPanelsPerRod) => {
 };
 
 const calculateLegsPerStructure = (
-  frontLegHeight,
-  panelsPerStructure,
-  panelLen,
-  tiltAngle = TILT_ANGLE,
-  gap = GAP
+  frontLegHeight: number,
+  panelsPerStructure: number,
+  panelLen: number,
+  tiltAngle: number = TILT_ANGLE,
+  gap: number = GAP
 ) => {
   const totalHypotenuse = (panelLen + gap) * panelsPerStructure;
   const triangleHeight = totalHypotenuse * Math.sin((tiltAngle * Math.PI) / 180);
@@ -60,7 +61,7 @@ const calculateLegsPerStructure = (
   };
 };
 
-const calculateRodsForProject = (structures, frontLegHeight, panelLen, rodLength = ROD_LENGTH) => {
+const calculateRodsForProject = (structures: any[], frontLegHeight: number, panelLen: number, rodLength: number = ROD_LENGTH) => {
   let totalInches = 0;
   let totalFrontLegs = 0;
   let totalRearLegs = 0;
@@ -122,9 +123,12 @@ const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
 
 /** ===== Cutting plan (compact UI) ===== */
 
-const buildCutPlanFFD = (pieces, rodLen, kerf) => {
+type CutPiece = { type: string; len: number };
+type RodPlan = { cuts: CutPiece[]; used: number; waste: number };
+
+const buildCutPlanFFD = (pieces: CutPiece[], rodLen: number, kerf: number): RodPlan[] => {
   const sorted = [...pieces].sort((a, b) => b.len - a.len);
-  const rods = [];
+  const rods: { cuts: CutPiece[]; used: number }[] = [];
 
   for (const piece of sorted) {
     let placed = false;
@@ -152,8 +156,8 @@ const buildCutPlanFFD = (pieces, rodLen, kerf) => {
   }));
 };
 
-const summarizePatterns = (rods) => {
-  const map = new Map();
+const summarizePatterns = (rods: RodPlan[]) => {
+  const map = new Map<string, { count: number; exampleWaste: number }>();
 
   for (const rod of rods) {
     const sig = rod.cuts
@@ -172,13 +176,13 @@ const summarizePatterns = (rods) => {
     .sort((a, b) => b.count - a.count);
 };
 
-const RodCuttingSuggestions = ({ results }) => {
+const RodCuttingSuggestions = ({ results }: { results: any }) => {
   const kerfNum = 0.125;
 
   const cutData = useMemo(() => {
     if (!results?.rods?.breakdown?.length) return null;
 
-    const pieces = [];
+    const pieces: CutPiece[] = [];
     for (const b of results.rods.breakdown) {
       const frontLen = Number(b.legs.frontLegHeight);
       const rearLen = Number(b.legs.rearLegHeight);
@@ -245,10 +249,10 @@ const RodCuttingSuggestions = ({ results }) => {
 
 /** ===== Hardware totals ===== */
 
-const HardwareTotals = ({ results }) => {
+const HardwareTotals = ({ results }: { results: any }) => {
   const totalStructures = useMemo(() => {
     if (!results?.structures?.length) return 0;
-    return results.structures.reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+    return results.structures.reduce((sum: number, s: any) => sum + (Number(s.count) || 0), 0);
   }, [results]);
 
   const totals = useMemo(() => {
@@ -302,9 +306,9 @@ const HardwareTotals = ({ results }) => {
 
 /** ===== Drawer + Navbar ===== */
 
-const DrawerMenu = ({ onClose }) => {
+const DrawerMenu = ({ onClose }: { onClose: () => void }) => {
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
 
     const prev = document.body.style.overflow;
@@ -393,7 +397,9 @@ const Navbar = () => {
   );
 };
 
-const ResultsTable = ({ results }) => {
+/** ===== Results ===== */
+
+const ResultsTable = ({ results }: { results: any }) => {
   if (!results) return null;
 
   const { maxPanelsPerRod, structures, rods } = results;
@@ -409,9 +415,7 @@ const ResultsTable = ({ results }) => {
       >
         <div className="font-semibold mb-1">{rods.isUniform ? "✅ Uniform Structures" : "⚠️ Mixed Structures"}</div>
         <div className="text-gray-200">
-          {structures
-            .map((s, i) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`)
-            .join("")}
+          {structures.map((s: any, i: number) => `${s.count} × ${s.panels}-panel${i < structures.length - 1 ? " + " : ""}`).join("")}
         </div>
       </div>
 
@@ -429,15 +433,13 @@ const ResultsTable = ({ results }) => {
           </tr>
           <tr>
             <td className="border-b border-gray-800 p-2">Structure Distribution</td>
-            <td className="border-b border-gray-800 p-2">
-              {structures.map((s) => `${s.count}x${s.panels}`).join(" + ")}
-            </td>
+            <td className="border-b border-gray-800 p-2">{structures.map((s: any) => `${s.count}x${s.panels}`).join(" + ")}</td>
           </tr>
 
-          {rods.breakdown.map((b, idx) => (
+          {rods.breakdown.map((b: any, idx: number) => (
             <React.Fragment key={`${b.panels}-${idx}`}>
               <tr className="bg-gray-950/40">
-                <td className="border-b border-gray-800 p-2 font-semibold" colSpan="2">
+                <td className="border-b border-gray-800 p-2 font-semibold" colSpan={2}>
                   {b.count} × {b.panels}-panel structure
                 </td>
               </tr>
@@ -464,9 +466,7 @@ const ResultsTable = ({ results }) => {
 
           <tr className="bg-green-900/30">
             <td className="border-b border-gray-800 p-2 font-bold text-lg">TOTAL GI Rods (164")</td>
-            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">
-              {rods.totals.totalRodsNeeded}
-            </td>
+            <td className="border-b border-gray-800 p-2 font-bold text-lg text-green-300">{rods.totals.totalRodsNeeded}</td>
           </tr>
           <tr>
             <td className="border-b border-gray-800 p-2">Total Material Length</td>
@@ -477,6 +477,8 @@ const ResultsTable = ({ results }) => {
     </div>
   );
 };
+
+/** ===== Form ===== */
 
 const InputForm = ({
   panelModels,
@@ -489,6 +491,17 @@ const InputForm = ({
   setSelectedPanelModel,
   isVertical,
   setIsVertical,
+}: {
+  panelModels: PanelRow[];
+  onCalculate: (res: any) => void;
+  frontLegHeight: string;
+  setFrontLegHeight: (v: string) => void;
+  numberOfPanels: string;
+  setNumberOfPanels: (v: string) => void;
+  selectedPanelModel: string;
+  setSelectedPanelModel: (v: string) => void;
+  isVertical: boolean;
+  setIsVertical: (v: boolean) => void;
 }) => {
   useEffect(() => {
     if (panelModels.length && !panelModels.find((p) => p.name === selectedPanelModel)) {
@@ -535,33 +548,23 @@ const InputForm = ({
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Front Leg Height (in inches)</label>
-        <input
-          type="number"
-          value={frontLegHeight}
-          onChange={(e) => setFrontLegHeight(e.target.value)}
-          className={fieldClass}
-        />
+        <input type="number" value={frontLegHeight} onChange={(e) => setFrontLegHeight(e.target.value)} className={fieldClass} />
       </div>
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Number of Panels</label>
-        <input
-          type="number"
-          value={numberOfPanels}
-          onChange={(e) => setNumberOfPanels(e.target.value)}
-          className={fieldClass}
-        />
+        <input type="number" value={numberOfPanels} onChange={(e) => setNumberOfPanels(e.target.value)} className={fieldClass} />
       </div>
 
       <div className="mb-4">
         <label className="block text-gray-300 mb-2">Panel Model</label>
         <select value={selectedPanelModel} onChange={(e) => setSelectedPanelModel(e.target.value)} className={fieldClass}>
-          {panelModels.map((m, idx) => {
+          {panelModels.map((m) => {
             const longSide = Math.max(Number(m.width), Number(m.height));
             const shortSide = Math.min(Number(m.width), Number(m.height));
 
             return (
-              <option key={`${m.name}-${idx}`} value={m.name}>
+              <option key={m.id} value={m.name}>
                 {m.name} - {longSide}x{shortSide} - {m.description}
               </option>
             );
@@ -587,9 +590,14 @@ const InputForm = ({
   );
 };
 
+/** ===== Home (SUPABASE) ===== */
+
 export default function Home() {
-  const [panelModels, setPanelModels] = useState([]);
-  const [results, setResults] = useState(null);
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("projectId");
+
+  const [panelModels, setPanelModels] = useState<PanelRow[]>([]);
+  const [results, setResults] = useState<any>(null);
 
   // Inputs lifted here so we can save them
   const [frontLegHeight, setFrontLegHeight] = useState("");
@@ -603,63 +611,69 @@ export default function Home() {
   // Hydration fix: render the select ONLY after client loaded panels
   const [isReady, setIsReady] = useState(false);
 
+  // Load panels from cloud
   useEffect(() => {
-    const models = loadPanels(); // client-only localStorage read happens here
-    setPanelModels(models);
-    setSelectedPanelModel((prev) => prev || models[0]?.name || "");
-    setIsReady(true);
+    (async () => {
+      try {
+        await seedDefaultPanelsIfEmpty();
+        const models = await listPanels();
+        setPanelModels(models);
+        setSelectedPanelModel((prev) => prev || models[0]?.name || "");
+        setIsReady(true);
+      } catch (e: any) {
+        alert(e?.message || "Failed to load panels from cloud.");
+      }
+    })();
   }, []);
 
+  // Load project from cloud: /?projectId=...
   useEffect(() => {
-    const id = popActiveProjectId();
-    if (!id) return;
+    if (!projectId) return;
 
-    const p = getProjectById(id);
-    if (!p) return;
+    (async () => {
+      try {
+        const p = await getProjectById(projectId);
 
-    setProjectName(p.name || "");
-    setFrontLegHeight(p.inputs?.frontLegHeight || "");
-    setNumberOfPanels(p.inputs?.numberOfPanels || "");
-    setSelectedPanelModel(p.inputs?.selectedPanelModel || "");
-    setIsVertical(Boolean(p.inputs?.isVertical));
-    setResults(p.results || null);
-  }, []);
+        setProjectName(p.name || "");
+        setFrontLegHeight(p.inputs?.frontLegHeight || "");
+        setNumberOfPanels(p.inputs?.numberOfPanels || "");
+        setSelectedPanelModel(p.inputs?.selectedPanelModel || "");
+        setIsVertical(Boolean(p.inputs?.isVertical));
+        setResults(p.results || null);
+      } catch (e: any) {
+        alert(e?.message || "Failed to load project from cloud.");
+      }
+    })();
+  }, [projectId]);
 
-  useEffect(() => {
-    const onFocus = () => setPanelModels(loadPanels());
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, []);
-
+  // If panel model was deleted, fallback
   useEffect(() => {
     if (panelModels.length && selectedPanelModel && !panelModels.find((p) => p.name === selectedPanelModel)) {
       setSelectedPanelModel(panelModels[0]?.name || "");
     }
   }, [panelModels, selectedPanelModel]);
 
-  const onSaveProject = () => {
+  const onSaveProject = async () => {
     if (!projectName.trim()) {
       alert("Enter project name.");
       return;
     }
 
     try {
-      addProject({
+      await createProject({
         name: projectName.trim(),
         inputs: { frontLegHeight, numberOfPanels, selectedPanelModel, isVertical },
         results,
       });
-      alert("Project saved. Go to Projects to view/edit.");
+      alert("Project saved to cloud. Go to Projects to view/edit.");
       setProjectName("");
-    } catch (e) {
+    } catch (e: any) {
       alert(e?.message || "Failed to save project.");
     }
   };
 
   return (
     <div className="bg-gray-950 text-gray-100 min-h-screen antialiased">
-      <Navbar />
-
       <div className="p-6 max-w-3xl mx-auto">
         {!isReady ? (
           <div className={`${cardClass} p-6`}>

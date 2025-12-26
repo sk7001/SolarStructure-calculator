@@ -2,23 +2,51 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { deleteProject, loadProjects } from "../lib/projectsStorage";
+import { useRouter } from "next/navigation";
+import { listProjects, deleteProject, type ProjectRow } from "../lib/projectsDb";
 
 const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState([]);
+  const router = useRouter();
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = async () => {
+    const rows = await listProjects();
+    setProjects(rows);
+  };
 
   useEffect(() => {
-    setProjects(loadProjects());
+    (async () => {
+      try {
+        setLoading(true);
+        await refresh();
+      } catch (e: any) {
+        alert(e?.message || "Failed to load projects from cloud.");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const hasProjects = projects.length > 0;
 
-  const onDelete = (id) => {
+  const onDelete = async (id: string) => {
     const ok = confirm("Delete this project?");
     if (!ok) return;
-    setProjects(deleteProject(id));
+
+    try {
+      await deleteProject(id);
+      await refresh();
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete project.");
+    }
+  };
+
+  const onOpen = (id: string) => {
+    // Open in calculator page using query param (cloud-friendly)
+    router.push(`/?projectId=${id}`);
   };
 
   return (
@@ -46,7 +74,13 @@ export default function ProjectsPage() {
           </div>
         </div>
 
-        {!hasProjects ? (
+        {loading ? (
+          <div className="min-h-[70vh] flex items-center justify-center">
+            <div className={`${cardClass} p-8 w-full max-w-md text-center`}>
+              <div className="text-gray-400">Loading...</div>
+            </div>
+          </div>
+        ) : !hasProjects ? (
           <div className="min-h-[70vh] flex items-center justify-center">
             <div className={`${cardClass} p-8 w-full max-w-md text-center`}>
               <div className="text-gray-200 font-semibold text-lg">No projects yet</div>
@@ -75,18 +109,19 @@ export default function ProjectsPage() {
                   <div>
                     <div className="text-gray-100 font-semibold">{p.name}</div>
                     <div className="text-gray-400 text-sm mt-1">
-                      Panels: {p.inputs.numberOfPanels || "-"} | Model: {p.inputs.selectedPanelModel || "-"} |{" "}
-                      {p.inputs.isVertical ? "Vertical" : "Horizontal"}
+                      Panels: {p.inputs?.numberOfPanels || "-"} | Model: {p.inputs?.selectedPanelModel || "-"} |{" "}
+                      {p.inputs?.isVertical ? "Vertical" : "Horizontal"}
                     </div>
                   </div>
 
                   <div className="shrink-0 flex items-center gap-2">
-                    <Link
-                      href={`/projects/${p.id}`}
-                      className="rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors px-4 py-2 border border-gray-700"
+                    <button
+                      type="button"
+                      onClick={() => onOpen(p.id)}
+                      className="rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors px-4 py-2 border border-blue-500"
                     >
-                      View / Edit
-                    </Link>
+                      Open
+                    </button>
 
                     <button
                       type="button"
@@ -99,6 +134,7 @@ export default function ProjectsPage() {
                 </div>
               ))}
             </div>
+
           </div>
         )}
       </div>
