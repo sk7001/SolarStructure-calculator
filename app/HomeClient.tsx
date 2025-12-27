@@ -8,7 +8,6 @@ import { listPanels, seedDefaultPanelsIfEmpty, type PanelRow } from "./lib/panel
 import { createProject, getProjectById, updateProject } from "./lib/projectsDb";
 import { computeCost, type CostData } from "./lib/costing";
 import { createPiece, listPieces, deletePieceById, type PieceRow } from "./lib/piecesDb";
-const [useInventory, setUseInventory] = useState(true);
 
 
 import EstimationPdfJsPdf from "./components/EstimationPdfJsPdf";
