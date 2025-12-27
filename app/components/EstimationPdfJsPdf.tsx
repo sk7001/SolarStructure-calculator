@@ -236,7 +236,7 @@ export default function EstimationPdfJsPdf({
         onClick={download}
         className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3 rounded-lg shadow-md transition font-semibold"
       >
-        Download estimation PDF
+        Download Estimation PDF
       </button>
     </div>
   );

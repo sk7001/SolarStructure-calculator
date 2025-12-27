@@ -3,8 +3,6 @@
 import React from "react";
 import jsPDF from "jspdf";
 
-const cardClass = "bg-gray-900 rounded-xl shadow-lg border border-gray-800";
-
 const money = (n: number) =>
   n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
@@ -457,11 +455,11 @@ export default function StructureSlipPdf({ data }: { data: StructureSlipData }) 
   };
 
   return (
-    <div className={`${cardClass} p-6 mt-6`}>
+    <div className="bg-gray-900 rounded-xl shadow-lg border border-gray-800 p-6 mt-6">
       <button
         type="button"
         onClick={downloadPdf}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3 rounded-lg shadow-md transition"
+        className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3 rounded-lg shadow-md transition font-semibold"
         disabled={!data}
       >
         Download Structure Slip PDF
